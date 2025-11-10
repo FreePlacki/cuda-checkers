@@ -1,0 +1,59 @@
+#include "move.h"
+#include "helpers.h"
+#include <ctype.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+
+static inline int pos_to_index(char file, char rank) {
+    if (!((file >= 'a' && file <= 'h') || (rank >= '1' && rank <= '8')))
+        return -1;
+    int x = file - 'a';
+    int y = 8 - (rank - '0');
+    if ((x + y) % 2 == 0)
+        return -1;          // light square
+    return y * 4 + (x / 2); // 0..31
+}
+
+int parse_move(const char *str, Move *out) {
+    if (!str || !out)
+        return 0;
+    uint8_t path[12];
+    int plen = 0;
+    int expect_square = 1;
+
+    while (*str) {
+        while (*str && isspace((unsigned char)*str))
+            str++;
+        if (!*str)
+            break;
+
+        if (expect_square) {
+            if (!isalpha((unsigned char)str[0]) ||
+                !isdigit((unsigned char)str[1]))
+                return 0;
+            int idx = pos_to_index(str[0], str[1]);
+            if (idx < 0)
+                return 0;
+            if (plen >= 12)
+                return 0;
+            path[plen++] = (uint8_t)idx;
+            str += 2;
+            expect_square = 0;
+        } else {
+            // separator: '-' or ':'
+            if (*str != '-' && *str != ':')
+                return 0;
+            str++;
+            expect_square = 1;
+        }
+    }
+
+    if (plen < 2)
+        return 0;
+
+    out->path_len = (uint8_t)plen;
+    for (int i = 0; i < plen; ++i)
+        out->path[i] = path[i];
+    return 1;
+}
