@@ -13,9 +13,10 @@ typedef struct {
     u32 kings;
 } Board;
 
-void init_board(Board *board);
+void init_board(Board *b);
 void print_board(const Board *state);
 void apply_move(Board *b, const Move *m);
+void flip_perspective(Board *b);
 
 // compute captured squares mask for a move given the current board.
 // returns 1 on success, 0 on error (illegal segment, no captured piece found, etc.)

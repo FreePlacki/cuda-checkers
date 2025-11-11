@@ -1,5 +1,7 @@
 #include "board.h"
+#include "helpers.h"
 #include "move.h"
+#include "movegen.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -7,8 +9,8 @@
 #include <time.h>
 
 typedef enum {
-    WHITE,
     BLACK,
+    WHITE,
 } Player;
 
 typedef struct {
@@ -17,15 +19,10 @@ typedef struct {
 } GameState;
 
 void init_game(GameState *state);
-int generate_moves(const GameState *state, int moves[][4], int max_moves);
 void log_move(const char *notation, FILE *logfile);
 
-void evaluate_position_gpu(const GameState *state) {
-    // TODO
-}
-
 void init_game(GameState *state) {
-    state->current_player = WHITE;
+    state->current_player = BLACK;
     init_board(&state->board);
 }
 
@@ -44,24 +41,34 @@ int main(int argc, char **argv) {
         return 1;
     }
 
+    MoveList mlist;
+    Move move;
     for (;;) {
         print_board(&game.board);
-        printf("Player %d move: ", game.current_player);
-        char input[32];
+
+        printf("\nPossible moves:\n");
+        generate_moves(&game.board, game.current_player == WHITE, &mlist);
+        print_movelist(&mlist);
+
+        printf("\nPlayer %d move: ", game.current_player);
+        char input[MOVE_STR_MAX];
         if (!fgets(input, sizeof(input), stdin))
             break;
         input[strcspn(input, "\n")] = 0;
 
-        Move move;
         if (!parse_move(input, &move)) {
-            printf("Incorrect move.\n");
+            printf("Incorrect move format.\n");
+            continue;
+        }
+
+        if (!is_valid_move(&move, &mlist)) {
+            printf("Invalid move.\n");
             continue;
         }
 
         apply_move(&game.board, &move);
 
         log_move(input, logfile);
-        evaluate_position_gpu(&game);
         game.current_player = !game.current_player;
     }
 

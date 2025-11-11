@@ -15,6 +15,12 @@ static inline int pos_to_index(char file, char rank) {
     return y * 4 + (x / 2); // 0..31
 }
 
+void simple_move(u8 from, u8 to, Move *out) {
+    out->path_len = 2;
+    out->path[0] = from;
+    out->path[1] = to;
+}
+
 int parse_move(const char *str, Move *out) {
     if (!str || !out)
         return 0;
@@ -41,7 +47,6 @@ int parse_move(const char *str, Move *out) {
             str += 2;
             expect_square = 0;
         } else {
-            // separator: '-' or ':'
             if (*str != '-' && *str != ':')
                 return 0;
             str++;
@@ -58,7 +63,7 @@ int parse_move(const char *str, Move *out) {
     return 1;
 }
 
-static void index_to_algebraic(u8 idx, char *out) {
+static void index_to_algebraic(u8 idx, char out[2]) {
     u8 y = 8 - idx / 4;
     u8 x = 2 * (idx % 4) + (y % 2 == 0);
     out[0] = 'a' + x;
@@ -75,7 +80,12 @@ void move_to_str(const Move *move, char *out) {
         out[j++] = s[0];
         out[j++] = s[1];
         if (i + 1 < move->path_len)
-            out[j++] = abs(idx - move->path[i + 1]) > 4 ? ':' : '-';
+            out[j++] = abs(idx - move->path[i + 1]) > 5 ? ':' : '-';
     }
     out[j] = 0;
+}
+
+void flip_move(Move *move) {
+    for (int i = 0; i < move->path_len; ++i)
+        move->path[i] = 31 - move->path[i];
 }

@@ -11,12 +11,17 @@ typedef struct {
     u8 path[12]; // sequence of visited squares: from, ..., to
 } Move;
 
+void simple_move(u8 from, u8 to, Move *out);
+
 // parse move string like "a3-b4" or "d2:f4:d6"
 // returns 1 on success, 0 on syntax/validation error
 int parse_move(const char *str, Move *out);
 
+#define MOVE_STR_MAX 36
 // given a move returns it's string representation
 // out length has to be at least 12 * 3 = 36
 void move_to_str(const Move *move, char *out);
+
+void flip_move(Move *move);
 
 #endif /* MOVE_H */

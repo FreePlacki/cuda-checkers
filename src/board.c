@@ -65,18 +65,11 @@ static inline int sgn(int v) { return (v > 0) - (v < 0); }
 
 // compute captured squares by inspecting segments of the path and looking for
 // opponent pieces
-int move_compute_captures(const Board *b, const Move *m,
-                          uint32_t *captures_out) {
-    if (!b || !m || !captures_out)
-        return 0;
-    uint32_t caps = 0;
-    if (m->path_len < 2)
-        return 0;
-
+// TODO: simplify!
+int move_compute_captures(const Board *b, const Move *m, u32 *caps) {
     // determine color of moving piece from starting square
-    uint32_t from_mask = 1u << m->path[0];
+    u32 from_mask = 1u << m->path[0];
     int is_white = (b->white & from_mask) != 0;
-    int is_king = (b->kings & from_mask) != 0;
 
     // iterate segments
     for (int s = 0; s < m->path_len - 1; ++s) {
@@ -89,19 +82,10 @@ int move_compute_captures(const Board *b, const Move *m,
 
         int dx = bx - ax;
         int dy = by - ay;
-        if (dx == 0 || dy == 0)
-            return 0; // must be diagonal
-        if (abs(dx) != abs(dy))
-            return 0; // must move along diagonal
 
         int stepx = sgn(dx);
         int stepy = sgn(dy);
         int steps = abs(dx);
-
-        if (!is_king && steps != 2) {
-            // men must jump exactly two squares when capturing
-            return 0;
-        }
 
         // search for captured piece(s) between a and b (exclusive)
         int found = 0;
@@ -109,16 +93,16 @@ int move_compute_captures(const Board *b, const Move *m,
         int cy = ay + stepy;
         for (int t = 1; t < steps; ++t, cx += stepx, cy += stepy) {
             int mid_idx = cy * 4 + (cx / 2);
-            uint32_t mid_mask = 1u << mid_idx;
+            u32 mid_mask = 1u << mid_idx;
             // if an opponent occupies this square, mark it captured
             if (is_white) {
                 if ((b->black & mid_mask) != 0) {
-                    caps |= mid_mask;
+                    *caps |= mid_mask;
                     found++;
                 }
             } else {
                 if ((b->white & mid_mask) != 0) {
-                    caps |= mid_mask;
+                    *caps |= mid_mask;
                     found++;
                 }
             }
@@ -131,6 +115,21 @@ int move_compute_captures(const Board *b, const Move *m,
         // for standard rules found should be exactly 1 per segment
     }
 
-    *captures_out = caps;
     return 1;
+}
+
+// on CUDA use __brev
+// (https://docs.nvidia.com/cuda/cuda-math-api/cuda_math_api/group__CUDA__MATH__INTRINSIC__INT.html#_CPPv46__brevj)
+static u32 reverse_bits(u32 x) {
+    x = (x & 0xAAAAAAAA) >> 1 | (x & 0x55555555) << 1;
+    x = (x & 0xCCCCCCCC) >> 2 | (x & 0x33333333) << 2;
+    x = (x & 0xF0F0F0F0) >> 4 | (x & 0x0F0F0F0F) << 4;
+    x = (x & 0xFF00FF00) >> 8 | (x & 0x00FF00FF) << 8;
+    return (x << 16) | (x >> 16);
+}
+
+void flip_perspective(Board *b) {
+    b->black = reverse_bits(b->black);
+    b->white = reverse_bits(b->white);
+    b->kings = reverse_bits(b->kings);
 }
