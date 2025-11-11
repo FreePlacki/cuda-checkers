@@ -57,3 +57,25 @@ int parse_move(const char *str, Move *out) {
         out->path[i] = path[i];
     return 1;
 }
+
+static void index_to_algebraic(u8 idx, char *out) {
+    u8 y = 8 - idx / 4;
+    u8 x = 2 * (idx % 4) + (y % 2 == 0);
+    out[0] = 'a' + x;
+    out[1] = '0' + y;
+}
+
+void move_to_str(const Move *move, char *out) {
+    int j = 0;
+    for (int i = 0; i < move->path_len; ++i) {
+        u8 idx = move->path[i];
+        char s[2];
+        index_to_algebraic(idx, s);
+
+        out[j++] = s[0];
+        out[j++] = s[1];
+        if (i + 1 < move->path_len)
+            out[j++] = abs(idx - move->path[i + 1]) > 4 ? ':' : '-';
+    }
+    out[j] = 0;
+}

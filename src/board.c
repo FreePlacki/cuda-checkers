@@ -31,17 +31,16 @@ void print_board(const Board *board) {
 }
 
 void apply_move(Board *board, const Move *m) {
-    uint32_t captures = 0;
+    u32 captures = 0u;
     move_compute_captures(board, m, &captures);
 
-    uint32_t from_mask = 1u << m->path[0];
-    uint32_t to_mask = 1u << m->path[m->path_len - 1];
-    uint32_t clear_mask = from_mask | captures;
+    u32 from_mask = 1u << m->path[0];
+    u32 to_mask = 1u << m->path[m->path_len - 1];
 
     int is_white = (board->white & from_mask) != 0;
     int is_king = (board->kings & from_mask) != 0;
 
-    // clear from and captured
+    u32 clear_mask = from_mask | captures;
     board->white &= ~clear_mask;
     board->black &= ~clear_mask;
     board->kings &= ~clear_mask;
