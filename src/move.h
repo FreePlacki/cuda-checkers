@@ -13,6 +13,8 @@ typedef struct {
 
 void simple_move(u8 from, u8 to, Move *out);
 
+int is_capture(const Move *move);
+
 // parse move string like "a3-b4" or "d2:f4:d6"
 // returns 1 on success, 0 on syntax/validation error
 int parse_move(const char *str, Move *out);

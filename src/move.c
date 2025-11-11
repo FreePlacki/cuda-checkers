@@ -21,6 +21,10 @@ void simple_move(u8 from, u8 to, Move *out) {
     out->path[1] = to;
 }
 
+int is_capture(const Move *move) {
+    return abs(move->path[0] - move->path[1]) > 5;
+}
+
 int parse_move(const char *str, Move *out) {
     if (!str || !out)
         return 0;

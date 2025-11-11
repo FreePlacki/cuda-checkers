@@ -1,22 +1,16 @@
 #include "movegen.h"
 #include "board.h"
-#include "helpers.h"
 #include "move.h"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-void index_to_xy(int idx, int *x, int *y);
-
-static inline int in_bounds(int x, int y) {
-    return x >= 0 && x < 8 && y >= 0 && y < 8 && ((x + y) & 1u);
-}
 
 void append_move(MoveList *l, Move m) { l->moves[l->count++] = m; }
 
 int pstrcmp(const void *a, const void *b) {
     return strcmp(*(const char **)a, *(const char **)b);
 }
+
 void print_movelist(const MoveList *l) {
     char **moves_str = malloc(l->count * sizeof(char *));
     if (!moves_str)
@@ -57,6 +51,28 @@ int is_valid_move(const Move *m, const MoveList *l) {
     }
 
     return 0;
+}
+
+static void force_captures(MoveList *l) {
+    int capture_len = 0;
+    for (int i = 0; i < l->count; ++i) {
+        if (is_capture(&l->moves[i])) {
+            int len = l->moves[i].path_len;
+            capture_len = len > capture_len ? len : capture_len;
+            break;
+        }
+    }
+    if (!capture_len)
+        return;
+
+    // retain only longest captures
+    int cnt = 0;
+    for (int i = 0; i < l->count; ++i) {
+        if (is_capture(&l->moves[i]) && l->moves[i].path_len == capture_len) {
+            l->moves[cnt++] = l->moves[i];
+        }
+    }
+    l->count = cnt;
 }
 
 void generate_single(const Board *b, int is_white, MoveList *out) {
@@ -124,8 +140,6 @@ void generate_single(const Board *b, int is_white, MoveList *out) {
     }
 }
 
-static inline int xy_to_index(int x, int y) { return y * 4 + (x / 2); }
-
 void flip_moves(MoveList *l) {
     for (int i = 0; i < l->count; ++i)
         flip_move(&l->moves[i]);
@@ -139,7 +153,9 @@ void generate_moves(const Board *b, int is_white, MoveList *out) {
         flip_perspective(&board);
         generate_single(&board, is_white, out);
         flip_moves(out);
-        return;
+    } else {
+        generate_single(b, is_white, out);
     }
-    generate_single(b, is_white, out);
+
+    force_captures(out);
 }
