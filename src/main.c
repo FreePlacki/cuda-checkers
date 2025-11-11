@@ -69,6 +69,7 @@ int main(int argc, char **argv) {
 
         apply_move(&game.board, &move);
 
+        move_to_str(&move, input);
         log_move(input, logfile);
         game.current_player = !game.current_player;
     }
