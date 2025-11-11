@@ -59,11 +59,15 @@ int is_valid_move(const Move *m, const MoveList *l) {
     return 0;
 }
 
-void generate_non_captures(const Board *b, int is_white, MoveList *out) {
+void generate_single(const Board *b, int is_white, MoveList *out) {
     u32 own = is_white ? b->white : b->black;
     u32 ene = is_white ? b->black : b->white;
     u32 occ = own | ene;
     u32 free = ~occ;
+
+    u32 can_move_down = 0xFFFFFFF0;  // + 4
+    u32 can_move_right = 0x07070707; // + 5
+    u32 can_move_left = 0xE0E0E0E0;  // + 3
 
     Move m;
     for (int idx = 0; idx < 32; ++idx) {
@@ -71,31 +75,50 @@ void generate_non_captures(const Board *b, int is_white, MoveList *out) {
         if (!(own & idxm))
             continue;
 
-        u32 can_move_down = 0xFFFFFFF0;
         if (can_move_down & idxm) {
             int mv = idx + 4;
-            u32 p = 1u << mv;
+            u32 p = idxm << 4;
             if (free & p) {
                 simple_move(idx, mv, &m);
                 append_move(out, m);
+            } else if (ene & p) {
+                if (can_move_right & p && free & (p << 5)) {
+                    mv += 5;
+                    simple_move(idx, mv, &m);
+                    append_move(out, m);
+                } else if (can_move_left & p && free & (p << 3)) {
+                    mv += 3;
+                    simple_move(idx, mv, &m);
+                    append_move(out, m);
+                }
             }
         }
-        u32 can_move_right = 0x07070707;
         if (can_move_right & idxm) {
             int mv = idx + 5;
-            u32 p = 1u << mv;
+            u32 p = idxm << 5;
             if (free & p) {
                 simple_move(idx, mv, &m);
                 append_move(out, m);
+            } else if (ene & p) {
+                if (can_move_down & p && free & (p << 4)) {
+                    mv += 4;
+                    simple_move(idx, mv, &m);
+                    append_move(out, m);
+                }
             }
         }
-        u32 can_move_left = 0xE0E0E0E0;
         if (can_move_left & idxm) {
             int mv = idx + 3;
-            u32 p = 1u << mv;
+            u32 p = idxm << 3;
             if (free & p) {
                 simple_move(idx, mv, &m);
                 append_move(out, m);
+            } else if (ene & p) {
+                if (can_move_down & p && free & (p << 4)) {
+                    mv += 4;
+                    simple_move(idx, mv, &m);
+                    append_move(out, m);
+                }
             }
         }
     }
@@ -114,9 +137,9 @@ void generate_moves(const Board *b, int is_white, MoveList *out) {
     if (!is_white) {
         Board board = *b;
         flip_perspective(&board);
-        generate_non_captures(&board, is_white, out);
+        generate_single(&board, is_white, out);
         flip_moves(out);
         return;
     }
-    generate_non_captures(b, is_white, out);
+    generate_single(b, is_white, out);
 }

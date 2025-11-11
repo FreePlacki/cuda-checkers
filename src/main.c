@@ -50,7 +50,8 @@ int main(int argc, char **argv) {
         generate_moves(&game.board, game.current_player == WHITE, &mlist);
         print_movelist(&mlist);
 
-        printf("\nPlayer %d move: ", game.current_player);
+        printf("\nPlayer %d (%c) move: ", game.current_player,
+               game.current_player == WHITE ? 'w' : 'b');
         char input[MOVE_STR_MAX];
         if (!fgets(input, sizeof(input), stdin))
             break;
