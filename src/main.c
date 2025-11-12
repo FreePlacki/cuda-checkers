@@ -33,6 +33,7 @@ int player_v_player(GameState *game, FILE *logfile) {
     case PENDING:
         break;
     }
+
     print_board(&game->board);
 
     printf("\nPossible moves:\n");

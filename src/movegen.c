@@ -1,5 +1,6 @@
 #include "movegen.h"
 #include "board.h"
+#include "helpers.h"
 #include "move.h"
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,6 +14,8 @@ int pstrcmp(const void *a, const void *b) {
 }
 
 void print_movelist(const MoveList *l) {
+    if (l->count == 0)
+        return;
     char **moves_str = malloc(l->count * sizeof(char *));
     if (!moves_str)
         return;
@@ -76,10 +79,11 @@ static void force_captures(MoveList *l) {
     l->count = cnt;
 }
 
-void generate_move_kings(const Board *b, int is_white, MoveList *out) {
+// NOTE: requires flipping the moves after!
+static void generate_move_kings(const Board *b, int is_white, MoveList *out) {
     Board board = flip_perspective(b);
     u32 mask = board.kings & (is_white ? board.white : board.black);
-    generate_single(b, is_white, out, mask);
+    generate_single(&board, is_white, out, mask);
 }
 
 void generate_single(const Board *b, int is_white, MoveList *out, u32 mask) {
@@ -155,14 +159,15 @@ void flip_moves(MoveList *l) {
 void generate_moves(const Board *b, int is_white, MoveList *out) {
     out->count = 0;
 
-    if (!is_white) {
+    if (is_white) {
+        generate_move_kings(b, is_white, out);
+        flip_moves(out);
+        generate_single(b, is_white, out, -1);
+    } else {
         Board board = flip_perspective(b);
         generate_single(&board, is_white, out, -1);
-        generate_move_kings(&board, is_white, out);
         flip_moves(out);
-    } else {
-        generate_single(b, is_white, out, -1);
-        generate_move_kings(b, is_white, out);
+        generate_move_kings(&board, is_white, out);
     }
 
     force_captures(out);

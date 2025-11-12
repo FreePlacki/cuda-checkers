@@ -52,8 +52,10 @@ void apply_move(Board *board, const Move *m) {
         board->black |= to_mask;
 
     // promotion: if not already a king and reaches last row
-    int to_row = (int)(m->path[m->path_len - 1]) / 4;
-    if (is_king || (is_white && to_row == 7) || (!is_white && to_row == 0))
+    int to_row_white = 0xF0000000;
+    int to_row_black = 0x0000000F;
+    if (is_king || (is_white && (to_row_white & to_mask)) ||
+        (!is_white && (to_row_black & to_mask)))
         board->kings |= to_mask;
 }
 
