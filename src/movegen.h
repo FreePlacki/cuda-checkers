@@ -12,7 +12,7 @@ typedef struct {
 // have the player on move be on top (use flip if necessary)
 
 // Generate all non-capture moves or single-capture moves
-void generate_single(const Board *b, int is_white, MoveList *out);
+void generate_single(const Board *b, int is_white, MoveList *out, u32 mask);
 
 // Generate all legal moves for the player
 void generate_moves(const Board *b, int is_white, MoveList *out);

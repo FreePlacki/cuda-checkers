@@ -9,11 +9,6 @@
 #include <string.h>
 #include <time.h>
 
-void log_move(const char *notation, FILE *logfile) {
-    if (logfile)
-        fprintf(logfile, "%s\n", notation);
-}
-
 void usage(char *pname) {
     fprintf(stderr,
             "Usage\t%s [init.txt]\ninit.txt - moves file to use for initial "
@@ -64,7 +59,8 @@ int player_v_player(GameState *game, FILE *logfile) {
     apply_move(&game->board, &m);
 
     move_to_str(&m, input);
-    log_move(input, logfile);
+    if (logfile)
+        fprintf(logfile, "%s\n", input);
     game->current_player = !game->current_player;
 
     return 0;
@@ -77,23 +73,24 @@ int main(int argc, char **argv) {
     char *pname = argv[0];
     if (argc > 2)
         usage(pname);
+
+    FILE *logfile = fopen("game_log.txt", "w");
+    if (!logfile) {
+        perror("Couldn't open log file");
+        return 1;
+    }
+
     if (argc == 2) {
         FILE *init_file = fopen(argv[1], "r");
         if (!init_file) {
             perror("Couldn't open init file");
             return 1;
         }
-        if (!seed_game(&game, init_file)) {
+        if (!seed_game(&game, init_file, logfile)) {
             perror("Invalid move in init file");
             return 1;
         }
         printf("Initialized game state from input file\n");
-    }
-
-    FILE *logfile = fopen("game_log.txt", "w");
-    if (!logfile) {
-        perror("Couldn't open log file");
-        return 1;
     }
 
     for (;;) {

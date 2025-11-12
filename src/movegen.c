@@ -76,7 +76,13 @@ static void force_captures(MoveList *l) {
     l->count = cnt;
 }
 
-void generate_single(const Board *b, int is_white, MoveList *out) {
+void generate_move_kings(const Board *b, int is_white, MoveList *out) {
+    Board board = flip_perspective(b);
+    u32 mask = board.kings & (is_white ? board.white : board.black);
+    generate_single(b, is_white, out, mask);
+}
+
+void generate_single(const Board *b, int is_white, MoveList *out, u32 mask) {
     u32 own = is_white ? b->white : b->black;
     u32 ene = is_white ? b->black : b->white;
     u32 occ = own | ene;
@@ -89,7 +95,7 @@ void generate_single(const Board *b, int is_white, MoveList *out) {
     Move m;
     for (int idx = 0; idx < 32; ++idx) {
         u32 idxm = 1u << idx;
-        if (!(own & idxm))
+        if (!(mask & own & idxm))
             continue;
 
         if (can_move_down & idxm) {
@@ -150,12 +156,13 @@ void generate_moves(const Board *b, int is_white, MoveList *out) {
     out->count = 0;
 
     if (!is_white) {
-        Board board = *b;
-        flip_perspective(&board);
-        generate_single(&board, is_white, out);
+        Board board = flip_perspective(b);
+        generate_single(&board, is_white, out, -1);
+        generate_move_kings(&board, is_white, out);
         flip_moves(out);
     } else {
-        generate_single(b, is_white, out);
+        generate_single(b, is_white, out, -1);
+        generate_move_kings(b, is_white, out);
     }
 
     force_captures(out);

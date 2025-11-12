@@ -24,7 +24,7 @@ typedef struct {
 
 void init_game(GameState *state);
 
-int seed_game(GameState *gs, FILE *f);
+int seed_game(GameState *gs, FILE *f, FILE *logfile);
 
 GameResult game_result(const GameState *gs);
 

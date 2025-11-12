@@ -1,10 +1,11 @@
 #include "gamestate.h"
+#include "move.h"
 void init_game(GameState *state) {
     state->current_player = BLACK;
     init_board(&state->board);
 }
 
-int seed_game(GameState *gs, FILE *f) {
+int seed_game(GameState *gs, FILE *f, FILE *logfile) {
     char buf[MOVE_STR_MAX];
 
     Move m;
@@ -13,6 +14,10 @@ int seed_game(GameState *gs, FILE *f) {
             return 0;
         apply_move(&gs->board, &m);
         gs->current_player = !gs->current_player;
+
+        move_to_str(&m, buf);
+        if (logfile)
+            fprintf(logfile, "%s\n", buf);
     }
     return 1;
 }

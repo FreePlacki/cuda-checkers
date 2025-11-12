@@ -128,8 +128,11 @@ static u32 reverse_bits(u32 x) {
     return (x << 16) | (x >> 16);
 }
 
-void flip_perspective(Board *b) {
-    b->black = reverse_bits(b->black);
-    b->white = reverse_bits(b->white);
-    b->kings = reverse_bits(b->kings);
+Board flip_perspective(const Board *b) {
+    Board board;
+    board.black = reverse_bits(b->black);
+    board.white = reverse_bits(b->white);
+    board.kings = reverse_bits(b->kings);
+
+    return board;
 }
