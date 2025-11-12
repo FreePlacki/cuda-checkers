@@ -7,6 +7,7 @@
 
 void append_move(MoveList *l, Move m) { l->moves[l->count++] = m; }
 
+// for sorting movelist alphabetically
 int pstrcmp(const void *a, const void *b) {
     return strcmp(*(const char **)a, *(const char **)b);
 }
