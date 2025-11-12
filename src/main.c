@@ -18,9 +18,6 @@ typedef struct {
     unsigned char current_player;
 } GameState;
 
-void init_game(GameState *state);
-void log_move(const char *notation, FILE *logfile);
-
 void init_game(GameState *state) {
     state->current_player = BLACK;
     init_board(&state->board);
@@ -31,9 +28,46 @@ void log_move(const char *notation, FILE *logfile) {
         fprintf(logfile, "%s\n", notation);
 }
 
+int seed_game(GameState *gs, FILE *f) {
+    char buf[MOVE_STR_MAX];
+
+    Move m;
+    while (fgets(buf, MOVE_STR_MAX, f)) {
+        if (!parse_move(buf, &m))
+            return 0;
+        apply_move(&gs->board, &m);
+        gs->current_player = !gs->current_player;
+    }
+    return 1;
+}
+
+void usage(char *pname) {
+    fprintf(stderr,
+            "Usage\t%s [init.txt]\ninit.txt - moves file to use for initial "
+            "board state",
+            pname);
+    exit(1);
+}
+
 int main(int argc, char **argv) {
     GameState game;
     init_game(&game);
+
+    char *pname = argv[0];
+    if (argc > 2)
+        usage(pname);
+    if (argc == 2) {
+        FILE *init_file = fopen(argv[1], "r");
+        if (!init_file) {
+            perror("Couldn't open init file");
+            return 1;
+        }
+        if (!seed_game(&game, init_file)) {
+            perror("Invalid move in init file");
+            return 1;
+        }
+        printf("Initialized game state from input file\n");
+    }
 
     FILE *logfile = fopen("game_log.txt", "w");
     if (!logfile) {
