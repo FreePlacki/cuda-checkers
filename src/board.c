@@ -10,6 +10,16 @@ void init_board(Board *board) {
     board->black = 0xFFF00000u;
 }
 
+#ifdef FORMATTING
+#define FORM_END "\e[m"
+#define FORM_FADE "\e[2m"
+#define FORM_UNDER "\e[4m"
+#else
+#define FORM_END ""
+#define FORM_FADE ""
+#define FORM_UNDER ""
+#endif /* FORMATTING */
+
 void print_board(const Board *board, const MoveList *mlist,
                  const Move *last_move) {
     printf("\n  a b c d e f g h\n");
@@ -20,7 +30,7 @@ void print_board(const Board *board, const MoveList *mlist,
             char c = '.';
             int idx = y * 4 + x / 2;
             if ((x + y) % 2 == 0) {
-                printf("\e[2m.\e[m ");
+                printf(FORM_FADE ". " FORM_END);
                 continue;
             }
             if (board->white & mask) {
@@ -40,9 +50,9 @@ void print_board(const Board *board, const MoveList *mlist,
                 printf("%c ", c);
             else if (last_move->path_len > 1 && last_move->path[0] == idx ||
                      last_move->path[1] == idx)
-                printf("\e[4m\e[2m%c\e[m\e[m ", c);
+                printf(FORM_FADE FORM_UNDER "%c" FORM_END " ", c);
             else
-                printf("\e[2m%c\e[m ", c);
+                printf(FORM_FADE "%c " FORM_END, c);
         }
         printf("%d\n", 8 - y);
     }

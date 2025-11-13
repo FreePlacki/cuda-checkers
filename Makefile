@@ -1,6 +1,6 @@
 CC = gcc
-CFLAGS = -g -Wall -Wextra -Iinclude
-LDFLAGS =
+CFLAGS = -g -Wall -Wextra -DFORMATTING -Iinclude
+LDFLAGS = 
 TARGET = checkers
 SRCDIR = src
 OBJDIR = build
