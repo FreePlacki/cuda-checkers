@@ -3,6 +3,7 @@
 #include "helpers.h"
 #include "move.h"
 #include "movegen.h"
+#include "assert.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -23,9 +24,6 @@ Move choose_move(const Board *board, const MoveList *l) {
 }
 
 static int play_turn(GameState *game, FILE *logfile, int is_ai, int pause) {
-    MoveList mlist;
-    generate_moves(&game->board, game->current_player == WHITE, &mlist);
-
     switch (game_result(game)) {
     case WHITE_WON:
         printf("White won!\n");
@@ -41,23 +39,24 @@ static int play_turn(GameState *game, FILE *logfile, int is_ai, int pause) {
     }
 
     char input[MOVE_STR_MAX];
-    Move m;
+    static Move m;
+    MoveList mlist;
+    int is_white = game->current_player == WHITE;
+    generate_moves(&game->board, is_white, &mlist);
 
     if (is_ai) {
         if (pause)
-            print_board(&game->board);
-        Move ai_move = choose_move(&game->board, &mlist);
-        move_to_str(&ai_move, input);
-        printf("AI (%c) chose %s\n", game->current_player == WHITE ? 'w' : 'b',
-               input);
-        m = ai_move;
+            print_board(&game->board, &mlist, &m);
+        m = choose_move(&game->board, &mlist);
+        move_to_str(&m, input);
+        printf("AI (%c) chose %s\n", is_white ? 'w' : 'b', input);
+        assert(is_valid_move(&m, &mlist));
     } else {
-        print_board(&game->board);
+        print_board(&game->board, &mlist, &m);
         printf("\nPossible moves:\n");
         print_movelist(&mlist);
 
-        printf("\nPlayer (%c) move: ",
-               game->current_player == WHITE ? 'w' : 'b');
+        printf("\nPlayer (%c) move: ", is_white ? 'w' : 'b');
         if (!fgets(input, sizeof(input), stdin))
             return 1;
         input[strcspn(input, "\n")] = 0;
@@ -77,7 +76,7 @@ static int play_turn(GameState *game, FILE *logfile, int is_ai, int pause) {
     if (logfile)
         fprintf(logfile, "%s\n", input);
 
-    game->current_player = !game->current_player;
+    next_turn(game, is_capture(&m));
 
     if (pause) {
         printf("Press ENTER to continue...\n");

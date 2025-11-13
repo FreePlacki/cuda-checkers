@@ -26,6 +26,8 @@ void init_game(GameState *state);
 
 int seed_game(GameState *gs, FILE *f, FILE *logfile);
 
+void next_turn(GameState *gs, int capture_occured);
+
 GameResult game_result(const GameState *gs);
 
 #endif /* GAMESTATE_H */

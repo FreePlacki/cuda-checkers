@@ -22,13 +22,21 @@ int seed_game(GameState *gs, FILE *f, FILE *logfile) {
     return 1;
 }
 
+void next_turn(GameState *gs, int capture_occured) {
+    gs->current_player = !gs->current_player;
+    if (capture_occured)
+        gs->no_capture = 0;
+    else
+        gs->no_capture++;
+}
+
 #define MAX_NOCAPTURE 50
 GameResult game_result(const GameState *gs) {
     if (gs->no_capture >= MAX_NOCAPTURE)
         return DRAW;
     if (gs->board.white == 0u)
         return BLACK_WON;
-    if (gs->board.white == 0u)
+    if (gs->board.black == 0u)
         return WHITE_WON;
     return PENDING;
 }

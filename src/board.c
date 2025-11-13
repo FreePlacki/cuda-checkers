@@ -1,4 +1,6 @@
 #include "board.h"
+#include "helpers.h"
+#include "movegen.h"
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -8,22 +10,39 @@ void init_board(Board *board) {
     board->black = 0xFFF00000u;
 }
 
-void print_board(const Board *board) {
+void print_board(const Board *board, const MoveList *mlist,
+                 const Move *last_move) {
     printf("\n  a b c d e f g h\n");
     int mask = 1u;
     for (int y = 0; y < 8; ++y) {
         printf("%d ", 8 - y);
         for (int x = 0; x < 8; ++x) {
             char c = '.';
-            if ((x + y) % 2) {
-                if (board->white & mask) {
-                    c = board->kings & mask ? 'W' : 'w';
-                } else if (board->black & mask) {
-                    c = board->kings & mask ? 'B' : 'b';
-                }
-                mask <<= 1;
+            int idx = y * 4 + x / 2;
+            if ((x + y) % 2 == 0) {
+                printf("\e[2m.\e[m ");
+                continue;
             }
-            printf("%c ", c);
+            if (board->white & mask) {
+                c = board->kings & mask ? 'W' : 'w';
+            } else if (board->black & mask) {
+                c = board->kings & mask ? 'B' : 'b';
+            }
+            mask <<= 1;
+            int valid = 0;
+            for (int i = 0; i < mlist->count; ++i) {
+                if (mlist->moves[i].path[0] == y * 4 + x / 2) {
+                    valid = 1;
+                    break;
+                }
+            }
+            if (valid)
+                printf("%c ", c);
+            else if (last_move->path_len > 1 && last_move->path[0] == idx ||
+                     last_move->path[1] == idx)
+                printf("\e[4m\e[2m%c\e[m\e[m ", c);
+            else
+                printf("\e[2m%c\e[m ", c);
         }
         printf("%d\n", 8 - y);
     }

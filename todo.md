@@ -1,0 +1,3 @@
+- [ ] multicaptures
+- [ ] gpu implementation
+- [ ] initial paper
