@@ -92,7 +92,7 @@ void generate_single(const Board *b, int is_white, MoveList *out, u32 mask) {
     u32 occ = own | ene;
     u32 free = ~occ;
 
-    u32 can_move_down = 0xFFFFFFF0;  // + 4
+    u32 can_move_down = 0x0FFFFFFF;  // + 4
     u32 can_move_right = 0x07070707; // + 5
     u32 can_move_left = 0xE0E0E0E0;  // + 3
 
