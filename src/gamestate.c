@@ -12,7 +12,7 @@ int seed_game(GameState *gs, FILE *f, FILE *logfile) {
     while (fgets(buf, MOVE_STR_MAX, f)) {
         if (!parse_move(buf, &m))
             return 0;
-        apply_move(&gs->board, &m);
+        apply_move(&gs->board, &m, 1);
         gs->current_player = !gs->current_player;
 
         move_to_str(&m, buf);

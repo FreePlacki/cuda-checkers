@@ -36,7 +36,7 @@ typedef struct {
 void init_board(Board *b);
 void print_board(const Board *state, const MoveList *mlist,
                  const Move *last_move);
-void apply_move(Board *b, const Move *m);
+void apply_move(Board *b, const Move *m, int with_promotion);
 
 // compute captured squares mask for a move given the current board.
 // returns 1 on success, 0 on error (illegal segment, no captured piece found,

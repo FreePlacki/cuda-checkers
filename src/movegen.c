@@ -133,15 +133,17 @@ static int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
     return cap_found;
 }
 
-static void generate_single(const Board *b, int is_white, MoveList *out) {
+static int generate_single(const Board *b, int is_white, MoveList *out,
+                           int mask) {
     out->count = 0;
 
-    u32 own = is_white ? b->white : b->black;
-    u32 ene = is_white ? b->black : b->white;
-    u32 kings = b->kings & own;
-    u32 men = own & ~kings;
-    u32 occ = own | ene;
-    u32 free = ~occ;
+    const u32 own = is_white ? b->white : b->black;
+    const u32 ene = is_white ? b->black : b->white;
+    const u32 occ = own | ene;
+    const u32 free = ~occ;
+
+    const u32 kings = b->kings & own & mask;
+    const u32 men = own & ~kings & mask;
 
     int capt = 0;
     if (is_white) {
@@ -173,25 +175,87 @@ static void generate_single(const Board *b, int is_white, MoveList *out) {
         gen_shift_moves(kings & CAN_DR, free, -7, out);
         gen_shift_moves(kings & CAN_DL, free, -1, out);
     }
+
+    return capt;
 }
 
+typedef struct {
+    Move m;
+    Board board;
+} StackNode;
+
+#define MOVES_STCK_MAX 64
+
+typedef struct {
+    StackNode nodes[MOVES_STCK_MAX];
+    int sp;
+} MoveS;
+
+static int push(StackNode n, MoveS *s) {
+    if (s->sp >= MOVES_STCK_MAX)
+        return 0;
+    s->nodes[s->sp++] = n;
+    return 1;
+}
+
+static StackNode pop(MoveS *s) { return s->nodes[--s->sp]; }
+
 static void generate_multi(const Board *b, int is_white, MoveList *out) {
-    assert(out->count > 0);
-    force_captures(out);
     if (!is_capture(&out->moves[0]))
         return;
 
-    Board tboard;
-    memcpy(&tboard, b, sizeof(Board));
-    for (int i = 0; i < out->count; ++i) {
-        apply_move(&tboard, &out->moves[i]);
-        // TODO
+    MoveS st;
+    st.sp = 0;
+
+    // init stack with single-capture moves
+    for (int i = 0; i < out->count; i++) {
+        StackNode n;
+        n.m = out->moves[i];
+        memcpy(&n.board, b, sizeof(Board));
+        apply_move(&n.board, &n.m, 0);
+        push(n, &st);
     }
+
+    MoveList res;
+    res.count = 0;
+
+    while (st.sp) {
+        StackNode cur = pop(&st);
+
+        MoveList next;
+        next.count = 0;
+
+        int last = cur.m.path[cur.m.path_len - 1];
+        int found_capture =
+            generate_single(&cur.board, is_white, &next, 1 << last);
+        if (!found_capture) {
+            append_move(&res, cur.m);
+            continue;
+        }
+
+        for (int i = 0; i < next.count; ++i) {
+            Move extended = cur.m;
+            Move step = next.moves[i];
+
+            extended.path[extended.path_len++] = step.path[1];
+            extended.captured |= step.captured;
+
+            StackNode child;
+            child.m = extended;
+            memcpy(&child.board, &cur.board, sizeof(Board));
+            apply_move(&child.board, &step, 0);
+
+            push(child, &st);
+        }
+    }
+
+    *out = res;
 }
 
 void generate_moves(const Board *b, int is_white, MoveList *out) {
     out->count = 0;
 
-    generate_single(b, is_white, out);
-    // force_captures(out);
+    generate_single(b, is_white, out, -1);
+    generate_multi(b, is_white, out);
+    force_captures(out);
 }

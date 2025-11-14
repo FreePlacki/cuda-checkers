@@ -67,7 +67,7 @@ void print_board(const Board *board, const MoveList *mlist,
     printf("  a b c d e f g h\n");
 }
 
-void apply_move(Board *board, const Move *m) {
+void apply_move(Board *board, const Move *m, int with_promotion) {
     u32 from_mask = 1u << m->path[0];
     u32 to_mask = 1u << m->path[m->path_len - 1];
 
@@ -86,69 +86,7 @@ void apply_move(Board *board, const Move *m) {
         board->black |= to_mask;
 
     // promotion: if not already a king and reaches last row
-    if (is_king || (is_white && (BOT_ROW & to_mask)) ||
-        (!is_white && (TOP_ROW & to_mask)))
+    if (with_promotion && (is_king || (is_white && (BOT_ROW & to_mask)) ||
+                           (!is_white && (TOP_ROW & to_mask))))
         board->kings |= to_mask;
 }
-
-static inline void index_to_xy(int idx, int *x, int *y) {
-    *y = idx / 4;
-    *x = 2 * (idx % 4) + ((*y + 1) % 2);
-}
-static inline int sgn(int v) { return (v > 0) - (v < 0); }
-
-// compute captured squares by inspecting segments of the path and looking for
-// opponent pieces
-// TODO: simplify!, probably remove this and update capture mask as the move is created
-int move_compute_captures(const Board *b, const Move *m, u32 *caps) {
-    // determine color of moving piece from starting square
-    u32 from_mask = 1u << m->path[0];
-    int is_white = (b->white & from_mask) != 0;
-
-    // iterate segments
-    for (int s = 0; s < m->path_len - 1; ++s) {
-        int a = m->path[s];
-        int bidx = m->path[s + 1];
-
-        int ax, ay, bx, by;
-        index_to_xy(a, &ax, &ay);
-        index_to_xy(bidx, &bx, &by);
-
-        int dx = bx - ax;
-        int dy = by - ay;
-
-        int stepx = sgn(dx);
-        int stepy = sgn(dy);
-        int steps = abs(dx);
-
-        // search for captured piece(s) between a and b (exclusive)
-        int found = 0;
-        int cx = ax + stepx;
-        int cy = ay + stepy;
-        for (int t = 1; t < steps; ++t, cx += stepx, cy += stepy) {
-            int mid_idx = cy * 4 + (cx / 2);
-            u32 mid_mask = 1u << mid_idx;
-            // if an opponent occupies this square, mark it captured
-            if (is_white) {
-                if ((b->black & mid_mask) != 0) {
-                    *caps |= mid_mask;
-                    found++;
-                }
-            } else {
-                if ((b->white & mid_mask) != 0) {
-                    *caps |= mid_mask;
-                    found++;
-                }
-            }
-        }
-
-        if (!found) {
-            // no captured piece in this segment -> illegal capture
-            return 0;
-        }
-        // for standard rules found should be exactly 1 per segment
-    }
-
-    return 1;
-}
-

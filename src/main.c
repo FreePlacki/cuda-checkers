@@ -75,7 +75,7 @@ static int play_turn(GameState *game, FILE *logfile, int is_ai, int pause) {
         }
     }
 
-    apply_move(&game->board, &m);
+    apply_move(&game->board, &m, 1);
     move_to_str(&m, input);
     if (logfile)
         fprintf(logfile, "%s\n", input);

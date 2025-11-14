@@ -66,6 +66,7 @@ int parse_move(const char *str, Move *out) {
     out->path_len = (uint8_t)plen;
     for (int i = 0; i < plen; ++i)
         out->path[i] = path[i];
+    // TODO: fill in `captured`!!!
     return 1;
 }
 
