@@ -4,12 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-void init_board(Board *board) {
-    board->kings = 0u;
-    board->white = 0x00000FFFu;
-    board->black = 0xFFF00000u;
-}
-
 #ifdef FORMATTING
 #define FORM_END "\e[m"
 #define FORM_FADE "\e[2m"
@@ -20,19 +14,33 @@ void init_board(Board *board) {
 #define FORM_UNDER ""
 #endif /* FORMATTING */
 
+#define BOT_ROW 0x00041041
+#define TOP_ROW 0x82000820
+
+const int idx_to_board[32] = {
+    11, 5,  31, 25, 10, 4,  30, 24, 3,  29, 23, 17, 2,  28, 22, 16,
+    27, 21, 15, 9,  26, 20, 14, 8,  19, 13, 7,  1,  18, 12, 6,  0,
+};
+
+void init_board(Board *board) {
+    board->kings = 0;
+    board->white = 0xE3820C38; // top 3 rows
+    board->black = 0x041C71C3; // bot 3 rows
+}
+
 void print_board(const Board *board, const MoveList *mlist,
                  const Move *last_move) {
     printf("\n  a b c d e f g h\n");
-    int mask = 1u;
     for (int y = 0; y < 8; ++y) {
         printf("%d ", 8 - y);
         for (int x = 0; x < 8; ++x) {
             char c = '.';
-            int idx = y * 4 + x / 2;
+            int idx = idx_to_board[y * 4 + x / 2];
             if ((x + y) % 2 == 0) {
                 printf(FORM_FADE ". " FORM_END);
                 continue;
             }
+            u32 mask = 1 << idx;
             if (board->white & mask) {
                 c = board->kings & mask ? 'W' : 'w';
             } else if (board->black & mask) {
@@ -41,7 +49,7 @@ void print_board(const Board *board, const MoveList *mlist,
             mask <<= 1;
             int valid = 0;
             for (int i = 0; i < mlist->count; ++i) {
-                if (mlist->moves[i].path[0] == y * 4 + x / 2) {
+                if (mlist->moves[i].path[0] == idx) {
                     valid = 1;
                     break;
                 }
@@ -60,16 +68,13 @@ void print_board(const Board *board, const MoveList *mlist,
 }
 
 void apply_move(Board *board, const Move *m) {
-    u32 captures = 0u;
-    move_compute_captures(board, m, &captures);
-
     u32 from_mask = 1u << m->path[0];
     u32 to_mask = 1u << m->path[m->path_len - 1];
 
     int is_white = (board->white & from_mask) != 0;
     int is_king = (board->kings & from_mask) != 0;
 
-    u32 clear_mask = from_mask | captures;
+    u32 clear_mask = from_mask | m->captured;
     board->white &= ~clear_mask;
     board->black &= ~clear_mask;
     board->kings &= ~clear_mask;
@@ -81,10 +86,8 @@ void apply_move(Board *board, const Move *m) {
         board->black |= to_mask;
 
     // promotion: if not already a king and reaches last row
-    int to_row_white = 0xF0000000;
-    int to_row_black = 0x0000000F;
-    if (is_king || (is_white && (to_row_white & to_mask)) ||
-        (!is_white && (to_row_black & to_mask)))
+    if (is_king || (is_white && (BOT_ROW & to_mask)) ||
+        (!is_white && (TOP_ROW & to_mask)))
         board->kings |= to_mask;
 }
 
@@ -96,7 +99,7 @@ static inline int sgn(int v) { return (v > 0) - (v < 0); }
 
 // compute captured squares by inspecting segments of the path and looking for
 // opponent pieces
-// TODO: simplify!
+// TODO: simplify!, probably remove this and update capture mask as the move is created
 int move_compute_captures(const Board *b, const Move *m, u32 *caps) {
     // determine color of moving piece from starting square
     u32 from_mask = 1u << m->path[0];
@@ -149,21 +152,3 @@ int move_compute_captures(const Board *b, const Move *m, u32 *caps) {
     return 1;
 }
 
-// on CUDA use __brev
-// (https://docs.nvidia.com/cuda/cuda-math-api/cuda_math_api/group__CUDA__MATH__INTRINSIC__INT.html#_CPPv46__brevj)
-static u32 reverse_bits(u32 x) {
-    x = (x & 0xAAAAAAAA) >> 1 | (x & 0x55555555) << 1;
-    x = (x & 0xCCCCCCCC) >> 2 | (x & 0x33333333) << 2;
-    x = (x & 0xF0F0F0F0) >> 4 | (x & 0x0F0F0F0F) << 4;
-    x = (x & 0xFF00FF00) >> 8 | (x & 0x00FF00FF) << 8;
-    return (x << 16) | (x >> 16);
-}
-
-Board flip_perspective(const Board *b) {
-    Board board;
-    board.black = reverse_bits(b->black);
-    board.white = reverse_bits(b->white);
-    board.kings = reverse_bits(b->kings);
-
-    return board;
-}

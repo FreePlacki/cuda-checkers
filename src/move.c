@@ -1,4 +1,5 @@
 #include "move.h"
+#include "board.h"
 #include "helpers.h"
 #include <ctype.h>
 #include <stdio.h>
@@ -12,23 +13,24 @@ static inline int pos_to_index(char file, char rank) {
     int y = 8 - (rank - '0');
     if ((x + y) % 2 == 0)
         return -1;          // light square
-    return y * 4 + (x / 2); // 0..31
+    return idx_to_board[y * 4 + (x / 2)];
 }
 
 void simple_move(u8 from, u8 to, Move *out) {
     out->path_len = 2;
     out->path[0] = from;
     out->path[1] = to;
+    out->captured = 0;
 }
 
 int is_capture(const Move *move) {
-    return abs(move->path[0] - move->path[1]) > 5;
+    return move->captured != 0;
 }
 
 int parse_move(const char *str, Move *out) {
     if (!str || !out)
         return 0;
-    uint8_t path[12];
+    u8 path[10];
     int plen = 0;
     int expect_square = 1;
 
@@ -74,22 +76,25 @@ static void index_to_algebraic(u8 idx, char out[2]) {
     out[1] = '0' + y;
 }
 
+static int index_to_board(u8 idx) {
+    for (int i = 0; i < 32; ++i) {
+        if (idx_to_board[i] == idx)
+            return i;
+    }
+    return -1;
+}
+
 void move_to_str(const Move *move, char *out) {
     int j = 0;
     for (int i = 0; i < move->path_len; ++i) {
         u8 idx = move->path[i];
         char s[2];
-        index_to_algebraic(idx, s);
+        index_to_algebraic(index_to_board(idx), s);
 
         out[j++] = s[0];
         out[j++] = s[1];
         if (i + 1 < move->path_len)
-            out[j++] = abs(idx - move->path[i + 1]) > 5 ? ':' : '-';
+            out[j++] = is_capture(move) ? ':' : '-';
     }
     out[j] = 0;
-}
-
-void flip_move(Move *move) {
-    for (int i = 0; i < move->path_len; ++i)
-        move->path[i] = 31 - move->path[i];
 }

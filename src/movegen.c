@@ -1,4 +1,5 @@
 #include "movegen.h"
+#include "assert.h"
 #include "board.h"
 #include "helpers.h"
 #include "move.h"
@@ -79,96 +80,118 @@ static void force_captures(MoveList *l) {
     l->count = cnt;
 }
 
-// NOTE: requires flipping the moves after!
-static void generate_move_kings(const Board *b, int is_white, MoveList *out) {
-    Board board = flip_perspective(b);
-    u32 mask = board.kings & (is_white ? board.white : board.black);
-    generate_single(&board, is_white, out, mask);
-}
+#define CAN_UR 0x7DFDF5DD // can move +1
+#define CAN_UL 0x79FBF3DB // can move +7
+#define CAN_DR 0xFDF9EDBC // can move -7
+#define CAN_DL 0xFBFBEBBA // can move -1
 
-void generate_single(const Board *b, int is_white, MoveList *out, u32 mask) {
-    u32 own = is_white ? b->white : b->black;
-    u32 ene = is_white ? b->black : b->white;
-    u32 occ = own | ene;
-    u32 free = ~occ;
+static inline u32 rotl(u32 x, u8 n) { return (x << n) | (x >> (32 - n)); }
+static inline u32 rotr(u32 x, u8 n) { return (x >> n) | (x << (32 - n)); }
 
-    u32 can_move_down = 0x0FFFFFFF;  // + 4
-    u32 can_move_right = 0x07070707; // + 5
-    u32 can_move_left = 0xE0E0E0E0;  // + 3
+static void gen_shift_moves(u32 own, u32 free, int shift, MoveList *out) {
+    u32 shifted = shift > 0 ? rotl(own, shift) : rotr(own, -shift);
 
-    Move m;
-    for (int idx = 0; idx < 32; ++idx) {
-        u32 idxm = 1u << idx;
-        if (!(mask & own & idxm))
-            continue;
+    u32 moves = shifted & free;
 
-        if (can_move_down & idxm) {
-            int mv = idx + 4;
-            u32 p = idxm << 4;
-            if (free & p) {
-                simple_move(idx, mv, &m);
-                append_move(out, m);
-            } else if (ene & p) {
-                if (can_move_right & p && free & (p << 5)) {
-                    mv += 5;
-                    simple_move(idx, mv, &m);
-                    append_move(out, m);
-                } else if (can_move_left & p && free & (p << 3)) {
-                    mv += 3;
-                    simple_move(idx, mv, &m);
-                    append_move(out, m);
-                }
-            }
-        }
-        if (can_move_right & idxm) {
-            int mv = idx + 5;
-            u32 p = idxm << 5;
-            if (free & p) {
-                simple_move(idx, mv, &m);
-                append_move(out, m);
-            } else if (ene & p) {
-                if (can_move_down & p && free & (p << 4)) {
-                    mv += 4;
-                    simple_move(idx, mv, &m);
-                    append_move(out, m);
-                }
-            }
-        }
-        if (can_move_left & idxm) {
-            int mv = idx + 3;
-            u32 p = idxm << 3;
-            if (free & p) {
-                simple_move(idx, mv, &m);
-                append_move(out, m);
-            } else if (ene & p) {
-                if (can_move_down & p && free & (p << 4)) {
-                    mv += 4;
-                    simple_move(idx, mv, &m);
-                    append_move(out, m);
-                }
-            }
-        }
+    // iterating 1s (from least significant)
+    while (moves) {
+        u32 dst = moves & -moves;
+        moves ^= dst;
+
+        // number of consecutive 0s (form least significant)
+        int dst_idx = __builtin_ctz(dst);
+        int src_idx = (dst_idx + 32 - shift) % 32;
+
+        Move m;
+        simple_move(src_idx, dst_idx, &m);
+        append_move(out, m);
     }
 }
 
-void flip_moves(MoveList *l) {
-    for (int i = 0; i < l->count; ++i)
-        flip_move(&l->moves[i]);
+static int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
+                             MoveList *out) {
+    u32 nei = step > 0 ? rotl(ownp, step) : rotr(ownp, -step);
+    nei &= ene;
+    u32 dst = (step > 0) ? rotl(nei, step) : rotr(nei, -step);
+    dst &= free;
+
+    int cap_found = dst != 0;
+    while (dst) {
+        u32 dst_b = dst & -dst;
+        dst ^= dst_b;
+
+        int dst_idx = __builtin_ctz(dst_b);
+        int cap_idx = (dst_idx + 32 - step) % 32;
+        int src_idx = (cap_idx + 32 - step) % 32;
+
+        Move m;
+        simple_move(src_idx, dst_idx, &m);
+        m.captured = 1u << cap_idx;
+        append_move(out, m);
+    }
+
+    return cap_found;
+}
+
+static void generate_single(const Board *b, int is_white, MoveList *out) {
+    out->count = 0;
+
+    u32 own = is_white ? b->white : b->black;
+    u32 ene = is_white ? b->black : b->white;
+    u32 kings = b->kings & own;
+    u32 men = own & ~kings;
+    u32 occ = own | ene;
+    u32 free = ~occ;
+
+    int capt = 0;
+    if (is_white) {
+        capt |= gen_shift_capture(men & CAN_DL, ene & CAN_DL, free, -1, out);
+        capt |= gen_shift_capture(men & CAN_DR, ene & CAN_DR, free, -7, out);
+
+        if (!capt) {
+            gen_shift_moves(men & CAN_DL, free, -1, out);
+            gen_shift_moves(men & CAN_DR, free, -7, out);
+        }
+    } else {
+        capt |= gen_shift_capture(men & CAN_UL, ene & CAN_UL, free, +7, out);
+        capt |= gen_shift_capture(men & CAN_UR, ene & CAN_UR, free, +1, out);
+
+        if (!capt) {
+            gen_shift_moves(men & CAN_UR, free, +1, out);
+            gen_shift_moves(men & CAN_UL, free, +7, out);
+        }
+    }
+
+    capt |= gen_shift_capture(kings & CAN_UR, ene & CAN_UR, free, +1, out);
+    capt |= gen_shift_capture(kings & CAN_UL, ene & CAN_UL, free, +7, out);
+    capt |= gen_shift_capture(kings & CAN_DR, ene & CAN_DR, free, -7, out);
+    capt |= gen_shift_capture(kings & CAN_DL, ene & CAN_DL, free, -1, out);
+
+    if (!capt) {
+        gen_shift_moves(kings & CAN_UR, free, +1, out);
+        gen_shift_moves(kings & CAN_UL, free, +7, out);
+        gen_shift_moves(kings & CAN_DR, free, -7, out);
+        gen_shift_moves(kings & CAN_DL, free, -1, out);
+    }
+}
+
+static void generate_multi(const Board *b, int is_white, MoveList *out) {
+    assert(out->count > 0);
+    force_captures(out);
+    if (!is_capture(&out->moves[0]))
+        return;
+
+    Board tboard;
+    memcpy(&tboard, b, sizeof(Board));
+    for (int i = 0; i < out->count; ++i) {
+        apply_move(&tboard, &out->moves[i]);
+        // TODO
+    }
 }
 
 void generate_moves(const Board *b, int is_white, MoveList *out) {
     out->count = 0;
 
-    if (is_white) {
-        generate_move_kings(b, is_white, out);
-        flip_moves(out);
-        generate_single(b, is_white, out, -1);
-    } else {
-        Board board = flip_perspective(b);
-        generate_single(&board, is_white, out, -1);
-        flip_moves(out);
-        generate_move_kings(&board, is_white, out);
-    }
-
-    force_captures(out);
+    generate_single(b, is_white, out);
+    // force_captures(out);
 }

@@ -47,6 +47,10 @@ static int play_turn(GameState *game, FILE *logfile, int is_ai, int pause) {
     if (is_ai) {
         if (pause)
             print_board(&game->board, &mlist, &m);
+        if (mlist.count == 0) {
+            printf("NO VALID MOVES!\n");
+            exit(1);
+        }
         m = choose_move(&game->board, &mlist);
         move_to_str(&m, input);
         printf("AI (%c) chose %s\n", is_white ? 'w' : 'b', input);

@@ -7,8 +7,9 @@ typedef uint32_t u32;
 typedef uint8_t u8;
 
 typedef struct {
-    u8 path_len; // number of squares in path (>=2)
-    u8 path[12]; // sequence of visited squares: from, ..., to
+    u32 captured; // mask for pieces captured by this move
+    u8 path[10];  // sequence of visited squares: from, ..., to
+    u8 path_len;  // number of squares in path (>=2)
 } Move;
 
 void simple_move(u8 from, u8 to, Move *out);
@@ -23,7 +24,5 @@ int parse_move(const char *str, Move *out);
 // given a move returns it's string representation
 // out length has to be at least 12 * 3 = 36
 void move_to_str(const Move *move, char *out);
-
-void flip_move(Move *move);
 
 #endif /* MOVE_H */
