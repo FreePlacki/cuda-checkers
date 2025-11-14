@@ -1,9 +1,10 @@
+#include "assert.h"
 #include "board.h"
 #include "gamestate.h"
 #include "helpers.h"
+#include "mcts.h"
 #include "move.h"
 #include "movegen.h"
-#include "assert.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -13,17 +14,51 @@
 void usage(char *pname) {
     fprintf(stderr,
             "Usage\t%s logfile.txt [init.txt]\ninit.txt - moves file to use "
-            "for initial board state",
+            "for initial board state\n",
             pname);
     exit(1);
 }
 
-Move choose_move(const Board *board, const MoveList *l) {
-    int r = rand() % l->count;
-    return l->moves[r];
+typedef enum {
+    AI_RANDOM,
+    AI_FLAT_MC,
+} AiLevel;
+
+static AiLevel choose_ai_level() {
+    for (;;) {
+        printf("Choose AI level:\n");
+        printf("1.\tRandom\n");
+        printf("2.\tFlat Monte-Carlo\n");
+
+        char input[4];
+        if (!fgets(input, sizeof(input), stdin))
+            return AI_RANDOM;
+
+        switch (input[0]) {
+        case '1':
+            return AI_RANDOM;
+        case '2':
+            return AI_FLAT_MC;
+        }
+        printf("Pick a number 1 or 2\n");
+    }
 }
 
-static int play_turn(GameState *game, FILE *logfile, int is_ai, int pause) {
+static Move choose_ai_move(GameState *game, const MoveList *mlist,
+                           AiLevel lvl) {
+    switch (lvl) {
+    case AI_RANDOM:
+        return choose_move_rand(game, mlist);
+    case AI_FLAT_MC:
+        return choose_move(game, mlist);
+    default:
+        return choose_move_rand(game, mlist);
+    }
+}
+
+static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
+                     int black_is_ai, AiLevel white_ai_level,
+                     AiLevel black_ai_level, int pause) {
     switch (game_result(game)) {
     case WHITE_WON:
         printf("White won!\n");
@@ -41,20 +76,28 @@ static int play_turn(GameState *game, FILE *logfile, int is_ai, int pause) {
     char input[MOVE_STR_MAX];
     static Move m;
     MoveList mlist;
-    int is_white = game->current_player == WHITE;
+
+    int is_white = (game->current_player == WHITE);
+    int is_ai = is_white ? white_is_ai : black_is_ai;
+    AiLevel lvl = is_white ? white_ai_level : black_ai_level;
+
     generate_moves(&game->board, is_white, &mlist);
 
     if (is_ai) {
         if (pause)
             print_board(&game->board, &mlist, &m);
+
         if (mlist.count == 0) {
             printf("NO VALID MOVES!\n");
             exit(1);
         }
-        m = choose_move(&game->board, &mlist);
+
+        m = choose_ai_move(game, &mlist, lvl);
+
         move_to_str(&m, input);
         printf("AI (%c) chose %s\n", is_white ? 'w' : 'b', input);
         assert(is_valid_move(&m, &mlist));
+
     } else {
         print_board(&game->board, &mlist, &m);
         printf("\nPossible moves:\n");
@@ -89,22 +132,44 @@ static int play_turn(GameState *game, FILE *logfile, int is_ai, int pause) {
     return 0;
 }
 
-int player_v_player(GameState *game, FILE *logfile) {
-    return play_turn(game, logfile, 0, 0);
+int player_v_player(GameState *g, FILE *log) {
+    return play_turn(g, log, 0, 0, 0, 0, 0);
 }
 
-int player_black_v_ai(GameState *game, FILE *logfile) {
-    int is_ai = (game->current_player == WHITE);
-    return play_turn(game, logfile, is_ai, 0);
+int player_black_v_ai(GameState *g, FILE *log) {
+    static AiLevel white_ai;
+    static int initialized = 0;
+    if (!initialized) {
+        white_ai = choose_ai_level();
+        initialized = 1;
+    }
+    return play_turn(g, log, 1, 0, white_ai, 0, 0);
 }
 
-int player_white_v_ai(GameState *game, FILE *logfile) {
-    int is_ai = (game->current_player == BLACK);
-    return play_turn(game, logfile, is_ai, 0);
+int player_white_v_ai(GameState *g, FILE *log) {
+    static AiLevel black_ai;
+    static int initialized = 0;
+    if (!initialized) {
+        black_ai = choose_ai_level();
+        initialized = 1;
+    }
+    return play_turn(g, log, 0, 1, 0, black_ai, 0);
 }
 
-int ai_v_ai(GameState *game, FILE *logfile) {
-    return play_turn(game, logfile, 1, 1);
+int ai_v_ai(GameState *g, FILE *log) {
+    static AiLevel white_ai;
+    static AiLevel black_ai;
+    static int initialized = 0;
+
+    if (!initialized) {
+        printf("White AI:\n");
+        white_ai = choose_ai_level();
+        printf("Black AI:\n");
+        black_ai = choose_ai_level();
+        initialized = 1;
+    }
+
+    return play_turn(g, log, 1, 1, white_ai, black_ai, 1);
 }
 
 typedef enum {

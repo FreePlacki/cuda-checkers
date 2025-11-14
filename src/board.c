@@ -56,8 +56,8 @@ void print_board(const Board *board, const MoveList *mlist,
             }
             if (valid)
                 printf("%c ", c);
-            else if (last_move->path_len > 1 && last_move->path[0] == idx ||
-                     last_move->path[1] == idx)
+            else if (last_move->path_len > 1 && (last_move->path[0] == idx ||
+                     last_move->path[1] == idx))
                 printf(FORM_FADE FORM_UNDER "%c" FORM_END " ", c);
             else
                 printf(FORM_FADE "%c " FORM_END, c);

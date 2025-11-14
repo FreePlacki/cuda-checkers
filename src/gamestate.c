@@ -13,7 +13,7 @@ int seed_game(GameState *gs, FILE *f, FILE *logfile) {
         if (!parse_move(buf, &m))
             return 0;
         apply_move(&gs->board, &m, 1);
-        gs->current_player = !gs->current_player;
+        next_turn(gs, is_capture(&m));
 
         move_to_str(&m, buf);
         if (logfile)
