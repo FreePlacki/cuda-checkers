@@ -2,9 +2,6 @@
 #include "board.h"
 #include "helpers.h"
 #include <ctype.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 static inline int pos_to_index(char file, char rank) {
     if (!((file >= 'a' && file <= 'h') || (rank >= '1' && rank <= '8')))
@@ -12,7 +9,7 @@ static inline int pos_to_index(char file, char rank) {
     int x = file - 'a';
     int y = 8 - (rank - '0');
     if ((x + y) % 2 == 0)
-        return -1;          // light square
+        return -1; // light square
     return idx_to_board[y * 4 + (x / 2)];
 }
 
@@ -23,17 +20,13 @@ void simple_move(u8 from, u8 to, Move *out) {
     out->captured = 0;
 }
 
-int is_capture(const Move *move) {
-    return move->captured != 0;
-}
+int is_capture(const Move *move) { return move->captured != 0; }
 
 int parse_move(const char *str, Move *out) {
-    if (!str || !out)
-        return 0;
-    u8 path[10];
-    int plen = 0;
-    int expect_square = 1;
+    out->path_len = 0;
+    out->captured = 0;
 
+    int expect_square = 1;
     while (*str) {
         while (*str && isspace((unsigned char)*str))
             str++;
@@ -47,9 +40,9 @@ int parse_move(const char *str, Move *out) {
             int idx = pos_to_index(str[0], str[1]);
             if (idx < 0)
                 return 0;
-            if (plen >= 12)
+            if (out->path_len >= 10)
                 return 0;
-            path[plen++] = (uint8_t)idx;
+            out->path[out->path_len++] = (uint8_t)idx;
             str += 2;
             expect_square = 0;
         } else {
@@ -60,13 +53,43 @@ int parse_move(const char *str, Move *out) {
         }
     }
 
-    if (plen < 2)
+    if (out->path_len < 2)
         return 0;
 
-    out->path_len = (uint8_t)plen;
-    for (int i = 0; i < plen; ++i)
-        out->path[i] = path[i];
-    // TODO: fill in `captured`!!!
+    // reconstruct captured
+    for (int i = 0; i < out->path_len - 1; ++i) {
+        int src = out->path[i];
+        int dst = out->path[i + 1];
+        int fd = (dst + 32 - src) % 32;
+
+        int step;
+        int is_capture = 0;
+
+        switch (fd) {
+        case 2:
+            step = 1;
+            is_capture = 1;
+            break;
+        case 14:
+            step = 7;
+            is_capture = 1;
+            break;
+        case 30:
+            step = -1;
+            is_capture = 1;
+            break;
+        case 18:
+            step = -7;
+            is_capture = 1;
+            break;
+        }
+
+        if (is_capture) {
+            int mid = (src + step) % 32;
+            out->captured |= (1u << mid);
+        }
+    }
+
     return 1;
 }
 

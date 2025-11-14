@@ -79,7 +79,6 @@ void apply_move(Board *board, const Move *m, int with_promotion) {
     board->black &= ~clear_mask;
     board->kings &= ~clear_mask;
 
-    // place on destination
     if (is_white)
         board->white |= to_mask;
     else
