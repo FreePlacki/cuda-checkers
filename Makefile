@@ -1,28 +1,34 @@
-CC = gcc
-CFLAGS = -g -Wall -Wextra -DFORMATTING -Iinclude
-LDFLAGS = 
-TARGET = checkers
-SRCDIR = src
-OBJDIR = build
-BINDIR = bin
+# Compiler
+NVCC        := nvcc
+CXXFLAGS    := 
+LDFLAGS     :=
 
-SRC = $(wildcard $(SRCDIR)/*.c)
-OBJ = $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRC))
-EXEC = $(BINDIR)/$(TARGET)
+# Directories
+SRC_DIR     := src
+BUILD_DIR   := build
+BIN_DIR     := bin
 
-all: $(EXEC)
+# Output binary name
+TARGET      := $(BIN_DIR)/main
 
-$(EXEC): $(OBJ)
-	@mkdir -p $(BINDIR)
-	$(CC) $(CFLAGS) -o $@ $^ $(LDFLAGS)
+# All .cu source files
+CU_SRCS     := $(wildcard $(SRC_DIR)/*.cu)
 
-$(OBJDIR)/%.o: $(SRCDIR)/%.c
-	@mkdir -p $(OBJDIR)
-	$(CC) $(CFLAGS) -c $< -o $@
+# Object files for all .cu files
+CU_OBJS     := $(patsubst $(SRC_DIR)/%.cu,$(BUILD_DIR)/%.o,$(CU_SRCS))
+
+all: $(TARGET)
+
+# Compile each .cu into build/*.o
+$(BUILD_DIR)/%.o: $(SRC_DIR)/%.cu
+	@mkdir -p $(BUILD_DIR)
+	$(NVCC) -c $< -o $@ $(CXXFLAGS)
+
+# Link everything into final binary
+$(TARGET): $(CU_OBJS)
+	@mkdir -p $(BIN_DIR)
+	$(NVCC) -o $@ $^ $(LDFLAGS)
 
 clean:
-	rm -rf $(OBJDIR) $(BINDIR)
-
-run: $(EXEC)
-	./$(EXEC)
+	rm -rf $(BUILD_DIR) $(BIN_DIR)
 

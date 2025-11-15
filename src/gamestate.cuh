@@ -1,9 +1,42 @@
-#include "gamestate.h"
-#include "move.h"
+#ifndef GAMESTATE_H
+#define GAMESTATE_H
+
+#include "board.cuh"
+#include "move.cuh"
+#include <stdio.h>
+
+typedef enum {
+    BLACK,
+    WHITE,
+} Player;
+
+typedef enum {
+    BLACK_WON,
+    WHITE_WON,
+    DRAW,
+    PENDING,
+} GameResult;
+
+typedef struct {
+    Board board;
+    u8 current_player;
+    u8 no_capture; // number of conescutive non-capture moves
+} GameState;
+
 void init_game(GameState *state) {
     state->current_player = BLACK;
     init_board(&state->board);
 }
+
+__host__ __device__
+void next_turn(GameState *gs, int capture_occured) {
+    gs->current_player = !gs->current_player;
+    if (capture_occured)
+        gs->no_capture = 0;
+    else
+        gs->no_capture++;
+}
+
 
 int seed_game(GameState *gs, FILE *f, FILE *logfile) {
     char buf[MOVE_STR_MAX];
@@ -22,15 +55,8 @@ int seed_game(GameState *gs, FILE *f, FILE *logfile) {
     return 1;
 }
 
-void next_turn(GameState *gs, int capture_occured) {
-    gs->current_player = !gs->current_player;
-    if (capture_occured)
-        gs->no_capture = 0;
-    else
-        gs->no_capture++;
-}
-
 #define MAX_NOCAPTURE 50
+__host__ __device__
 GameResult game_result(const GameState *gs) {
     if (gs->no_capture >= MAX_NOCAPTURE)
         return DRAW;
@@ -40,3 +66,5 @@ GameResult game_result(const GameState *gs) {
         return WHITE_WON;
     return PENDING;
 }
+
+#endif /* GAMESTATE_H */

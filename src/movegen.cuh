@@ -1,28 +1,76 @@
-#include "movegen.h"
+#ifndef MOVEGEN_H
+#define MOVEGEN_H
+
 #include "assert.h"
-#include "board.h"
+#include "board.cuh"
 #include "helpers.h"
-#include "move.h"
+#include "move.cuh"
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-void append_move(MoveList *l, Move m) { l->moves[l->count++] = m; }
+typedef struct MoveList {
+    Move moves[128];
+    int count;
+} MoveList;
+
+void print_board(const Board *board, const MoveList *mlist,
+                 const Move *last_move) {
+    printf("\n  a b c d e f g h\n");
+    for (int y = 0; y < 8; ++y) {
+        printf("%d ", 8 - y);
+        for (int x = 0; x < 8; ++x) {
+            char c = '.';
+            int idx = idx_to_board[y * 4 + x / 2];
+            if ((x + y) % 2 == 0) {
+                printf(FORM_FADE ". " FORM_END);
+                continue;
+            }
+            u32 mask = 1 << idx;
+            if (board->white & mask) {
+                c = board->kings & mask ? 'W' : 'w';
+            } else if (board->black & mask) {
+                c = board->kings & mask ? 'B' : 'b';
+            }
+            mask <<= 1;
+            int valid = 0;
+            for (int i = 0; i < mlist->count; ++i) {
+                if (mlist->moves[i].path[0] == idx) {
+                    valid = 1;
+                    break;
+                }
+            }
+            if (valid)
+                printf("%c ", c);
+            else if (last_move->path_len > 1 && (last_move->path[0] == idx ||
+                     last_move->path[1] == idx))
+                printf(FORM_FADE FORM_UNDER "%c" FORM_END " ", c);
+            else
+                printf(FORM_FADE "%c " FORM_END, c);
+        }
+        printf("%d\n", 8 - y);
+    }
+    printf("  a b c d e f g h\n");
+}
+
+__host__ __device__ void append_move(MoveList *l, Move m) {
+    l->moves[l->count++] = m;
+}
 
 // for sorting movelist alphabetically
-int pstrcmp(const void *a, const void *b) {
+static int pstrcmp(const void *a, const void *b) {
     return strcmp(*(const char **)a, *(const char **)b);
 }
 
 void print_movelist(const MoveList *l) {
     if (l->count == 0)
         return;
-    char **moves_str = malloc(l->count * sizeof(char *));
+    char **moves_str = (char **)malloc(l->count * sizeof(char *));
     if (!moves_str)
         return;
 
     for (int i = 0; i < l->count; ++i) {
-        moves_str[i] = malloc(32);
+        moves_str[i] = (char *)malloc(sizeof(char *));
         move_to_str(&l->moves[i], moves_str[i]);
     }
 
@@ -58,7 +106,7 @@ int is_valid_move(const Move *m, const MoveList *l) {
     return 0;
 }
 
-static void force_captures(MoveList *l) {
+__host__ __device__ void force_captures(MoveList *l) {
     int capture_len = 0;
     for (int i = 0; i < l->count; ++i) {
         if (is_capture(&l->moves[i])) {
@@ -85,10 +133,24 @@ static void force_captures(MoveList *l) {
 #define CAN_DR 0xFDF9EDBC // can move -7
 #define CAN_DL 0xFBFBEBBA // can move -1
 
-static inline u32 rotl(u32 x, u8 n) { return (x << n) | (x >> (32 - n)); }
-static inline u32 rotr(u32 x, u8 n) { return (x >> n) | (x << (32 - n)); }
+__host__ __device__ inline u32 rotl(u32 x, u8 n) {
+    return (x << n) | (x >> (32 - n));
+}
+__host__ __device__ inline u32 rotr(u32 x, u8 n) {
+    return (x >> n) | (x << (32 - n));
+}
 
-static void gen_shift_moves(u32 own, u32 free, int shift, MoveList *out) {
+// counts the number of consecutive 0s (from least significant)
+__host__ __device__ inline int ctz32(u32 x) {
+#ifdef __CUDA_ARCH__
+    return __ffs(x) - 1;
+#else
+    return __builtin_ctz(x);
+#endif /* __CUDA_ARCH__ */
+}
+
+__host__ __device__ void gen_shift_moves(u32 own, u32 free, int shift,
+                                                MoveList *out) {
     u32 shifted = shift > 0 ? rotl(own, shift) : rotr(own, -shift);
 
     u32 moves = shifted & free;
@@ -98,8 +160,8 @@ static void gen_shift_moves(u32 own, u32 free, int shift, MoveList *out) {
         u32 dst = moves & -moves;
         moves ^= dst;
 
-        // number of consecutive 0s (form least significant)
-        int dst_idx = __builtin_ctz(dst);
+        int dst_idx = ctz32(dst);
+        // TODO: replace with & 31
         int src_idx = (dst_idx + 32 - shift) % 32;
 
         Move m;
@@ -108,8 +170,8 @@ static void gen_shift_moves(u32 own, u32 free, int shift, MoveList *out) {
     }
 }
 
-static int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
-                             MoveList *out) {
+__host__ __device__ int gen_shift_capture(u32 ownp, u32 ene, u32 free,
+                                                 int step, MoveList *out) {
     u32 nei = step > 0 ? rotl(ownp, step) : rotr(ownp, -step);
     nei &= ene;
     u32 dst = (step > 0) ? rotl(nei, step) : rotr(nei, -step);
@@ -120,7 +182,8 @@ static int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
         u32 dst_b = dst & -dst;
         dst ^= dst_b;
 
-        int dst_idx = __builtin_ctz(dst_b);
+        int dst_idx = ctz32(dst_b);
+        // TODO: replace with & 31
         int cap_idx = (dst_idx + 32 - step) % 32;
         int src_idx = (cap_idx + 32 - step) % 32;
 
@@ -133,8 +196,8 @@ static int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
     return cap_found;
 }
 
-static int generate_single(const Board *b, int is_white, MoveList *out,
-                           int mask) {
+__host__ __device__ int generate_single(const Board *b, int is_white,
+                                               MoveList *out, int mask) {
     out->count = 0;
 
     const u32 own = is_white ? b->white : b->black;
@@ -191,16 +254,17 @@ typedef struct {
     int sp;
 } MoveS;
 
-static int push(StackNode n, MoveS *s) {
+__host__ __device__ int push(StackNode n, MoveS *s) {
     if (s->sp >= MOVES_STCK_MAX)
         return 0;
     s->nodes[s->sp++] = n;
     return 1;
 }
 
-static StackNode pop(MoveS *s) { return s->nodes[--s->sp]; }
+__host__ __device__ StackNode pop(MoveS *s) { return s->nodes[--s->sp]; }
 
-static void generate_multi(const Board *b, int is_white, MoveList *out) {
+__host__ __device__ void generate_multi(const Board *b, int is_white,
+                                               MoveList *out) {
     if (!is_capture(&out->moves[0]))
         return;
 
@@ -252,10 +316,13 @@ static void generate_multi(const Board *b, int is_white, MoveList *out) {
     *out = res;
 }
 
-void generate_moves(const Board *b, int is_white, MoveList *out) {
+__host__ __device__ void generate_moves(const Board *b, int is_white,
+                                        MoveList *out) {
     out->count = 0;
 
     generate_single(b, is_white, out, -1);
     generate_multi(b, is_white, out);
     force_captures(out);
 }
+
+#endif /* MOVEGEN_H */

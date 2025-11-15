@@ -1,10 +1,12 @@
 #include "assert.h"
-#include "board.h"
-#include "gamestate.h"
+#include "board.cuh"
+#include "gamestate.cuh"
 #include "helpers.h"
-#include "mcts.h"
-#include "move.h"
-#include "movegen.h"
+#include "mcts.cuh"
+#include "mcts_gpu.cuh"
+#include "move.cuh"
+#include "movegen.cuh"
+#include <cuda_runtime.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -21,14 +23,16 @@ void usage(char *pname) {
 
 typedef enum {
     AI_RANDOM,
-    AI_FLAT_MC,
+    AI_FLAT_MC_CPU,
+    AI_FLAT_MC_GPU,
 } AiLevel;
 
 static AiLevel choose_ai_level() {
     for (;;) {
         printf("Choose AI level:\n");
         printf("1.\tRandom\n");
-        printf("2.\tFlat Monte-Carlo\n");
+        printf("2.\tFlat Monte-Carlo (CPU)\n");
+        printf("3.\tFlat Monte-Carlo (GPU)\n");
 
         char input[4];
         if (!fgets(input, sizeof(input), stdin))
@@ -38,9 +42,11 @@ static AiLevel choose_ai_level() {
         case '1':
             return AI_RANDOM;
         case '2':
-            return AI_FLAT_MC;
+            return AI_FLAT_MC_CPU;
+        case '3':
+            return AI_FLAT_MC_GPU;
         }
-        printf("Pick a number 1 or 2\n");
+        printf("Pick a number 1, 2 or 3\n");
     }
 }
 
@@ -49,8 +55,10 @@ static Move choose_ai_move(GameState *game, const MoveList *mlist,
     switch (lvl) {
     case AI_RANDOM:
         return choose_move_rand(game, mlist);
-    case AI_FLAT_MC:
-        return choose_move(game, mlist);
+    case AI_FLAT_MC_CPU:
+        return choose_move_flat_cpu(game, mlist);
+    case AI_FLAT_MC_GPU:
+        return choose_move_flat_gpu(game, mlist);
     default:
         return choose_move_rand(game, mlist);
     }
@@ -133,7 +141,7 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 }
 
 int player_v_player(GameState *g, FILE *log) {
-    return play_turn(g, log, 0, 0, 0, 0, 0);
+    return play_turn(g, log, 0, 0, AI_RANDOM, AI_RANDOM, 0);
 }
 
 int player_black_v_ai(GameState *g, FILE *log) {
@@ -143,7 +151,7 @@ int player_black_v_ai(GameState *g, FILE *log) {
         white_ai = choose_ai_level();
         initialized = 1;
     }
-    return play_turn(g, log, 1, 0, white_ai, 0, 0);
+    return play_turn(g, log, 1, 0, white_ai, AI_RANDOM, 0);
 }
 
 int player_white_v_ai(GameState *g, FILE *log) {
@@ -153,7 +161,7 @@ int player_white_v_ai(GameState *g, FILE *log) {
         black_ai = choose_ai_level();
         initialized = 1;
     }
-    return play_turn(g, log, 0, 1, 0, black_ai, 0);
+    return play_turn(g, log, 0, 1, AI_RANDOM, black_ai, 0);
 }
 
 int ai_v_ai(GameState *g, FILE *log) {
@@ -185,7 +193,7 @@ GameMode choose_game_mode() {
                "AI\n3.\tPlayer (white) vs AI\n4.\tAI vs AI\n");
         char input[4];
         if (!fgets(input, sizeof(input), stdin))
-            return 1;
+            return PLAYER_PLAYER;
 
         switch (input[0]) {
         case '1':
@@ -203,6 +211,12 @@ GameMode choose_game_mode() {
 
 int main(int argc, char **argv) {
     srand(time(0));
+
+    cudaError_t cudaStatus = cudaSetDevice(0);
+    int noCudaDevice = cudaStatus != cudaSuccess;
+    if (noCudaDevice) {
+        printf("No CUDA device found!\n");
+    }
 
     GameState game;
     init_game(&game);

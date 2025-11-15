@@ -1,13 +1,11 @@
-#include "mcts.h"
-#include "board.h"
-#include "gamestate.h"
-#include "helpers.h"
-#include "movegen.h"
-#include <assert.h>
-#include <stdlib.h>
-#include <string.h>
-#include <time.h>
+#ifndef MCTS_H
+#define MCTS_H
 
+#include "board.cuh"
+#include "gamestate.cuh"
+#include "movegen.cuh"
+
+// plays the game till the end and reports the result
 GameResult playout(const GameState *gs) {
     MoveList mlist;
     GameState state;
@@ -37,7 +35,8 @@ static double now(void) {
     clock_gettime(CLOCK_MONOTONIC, &t);
     return t.tv_sec + t.tv_nsec * 1e-9;
 }
-Move choose_move(const GameState *gs, const MoveList *l) {
+
+Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
     if (l->count == 1)
         return l->moves[0];
 
@@ -49,8 +48,12 @@ Move choose_move(const GameState *gs, const MoveList *l) {
     double t0 = now();
     for (int i = 0; i < l->count; ++i) {
         int score = 0;
+        GameState st = *gs;
+        apply_move(&st.board, &l->moves[i], 1);
+        next_turn(&st, is_capture(&l->moves[i]));
+
         for (int j = 0; j < playouts; ++j) {
-            switch (playout(gs)) {
+            switch (playout(&st)) {
             case BLACK_WON:
                 score += is_white ? -1 : 1;
                 break;
@@ -73,3 +76,5 @@ Move choose_move(const GameState *gs, const MoveList *l) {
 
     return l->moves[best_idx];
 }
+
+#endif /* MCTS_H */
