@@ -25,6 +25,7 @@ typedef struct {
 
 void init_game(GameState *state) {
     state->current_player = BLACK;
+    state->no_capture = 0;
     init_board(&state->board);
 }
 

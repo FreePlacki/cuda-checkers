@@ -41,7 +41,8 @@ Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
         return l->moves[0];
 
     int is_white = gs->current_player == WHITE;
-    const int playouts = 10000;
+    const int total_playouts = 100'000;
+    const int playouts = total_playouts / l->count;
     int best_res = -playouts;
     int best_idx = 0;
 
@@ -72,7 +73,7 @@ Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
         }
     }
     printf("valuation: %lf\nplayouts: %d\ntook: %lf s\n",
-           (double)best_res / playouts, playouts, now() - t0);
+           (double)best_res / playouts, total_playouts, now() - t0);
 
     return l->moves[best_idx];
 }

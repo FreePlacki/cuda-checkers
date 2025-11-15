@@ -71,7 +71,7 @@ int parse_move(const char *str, Move *out) {
     for (int i = 0; i < out->path_len - 1; ++i) {
         int src = out->path[i];
         int dst = out->path[i + 1];
-        int fd = (dst + 32 - src) % 32;
+        int fd = (dst - src) & 31;
 
         int step;
         int is_capture = 0;

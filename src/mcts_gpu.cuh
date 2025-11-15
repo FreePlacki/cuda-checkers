@@ -76,14 +76,25 @@ int playout_gpu(const GameState *gs, int playouts) {
     cudaMemcpy(h_results, d_results, playouts * sizeof(GameResult),
                cudaMemcpyDeviceToHost);
 
-    // Score: white win = +1, black win = -1
+    // double t0 = now();
     int score = 0;
+    // reversed because first move has already been applied
+    int is_white = gs->current_player != WHITE;
     for (int i = 0; i < playouts; ++i) {
-        if (h_results[i] == WHITE_WON)
-            score++;
-        else if (h_results[i] == BLACK_WON)
-            score--;
+        switch (h_results[i]) {
+            case WHITE_WON:
+                score += is_white ? +1 : -1;
+                break;
+            case BLACK_WON:
+                score += is_white ? -1 : +1;
+                break;
+            case DRAW:
+                break;
+            case PENDING:
+                assert(0 && "unreachable");
+        }
     }
+    // printf("Summing time: %lf s\n", now() - t0);
 
     delete[] h_results;
     delete[] h_states;
@@ -97,7 +108,8 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *l) {
     if (l->count == 1)
         return l->moves[0];
 
-    const int playouts = 10000;
+    const int total_playouts = 1'000'000;
+    const int playouts = total_playouts / l->count;
     double t0 = now();
 
     int best_score = -playouts;
@@ -118,7 +130,7 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *l) {
     }
 
     printf("valuation: %.4f\nplayouts: %d\ntook: %lf s\n",
-           (double)best_score / playouts, playouts, now() - t0);
+           (double)best_score / playouts, total_playouts, now() - t0);
 
     return l->moves[best_idx];
 }

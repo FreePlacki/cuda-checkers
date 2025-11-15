@@ -112,7 +112,7 @@ __host__ __device__ void force_captures(MoveList *l) {
         if (is_capture(&l->moves[i])) {
             int len = l->moves[i].path_len;
             capture_len = len > capture_len ? len : capture_len;
-            break;
+            continue;
         }
     }
     if (!capture_len)
@@ -161,8 +161,7 @@ __host__ __device__ void gen_shift_moves(u32 own, u32 free, int shift,
         moves ^= dst;
 
         int dst_idx = ctz32(dst);
-        // TODO: replace with & 31
-        int src_idx = (dst_idx + 32 - shift) % 32;
+        int src_idx = (dst_idx - shift) & 31;
 
         Move m;
         simple_move(src_idx, dst_idx, &m);
@@ -183,9 +182,8 @@ __host__ __device__ int gen_shift_capture(u32 ownp, u32 ene, u32 free,
         dst ^= dst_b;
 
         int dst_idx = ctz32(dst_b);
-        // TODO: replace with & 31
-        int cap_idx = (dst_idx + 32 - step) % 32;
-        int src_idx = (cap_idx + 32 - step) % 32;
+        int cap_idx = (dst_idx - step) & 31;
+        int src_idx = (cap_idx - step) & 31;
 
         Move m;
         simple_move(src_idx, dst_idx, &m);
