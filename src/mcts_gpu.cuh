@@ -8,6 +8,16 @@
 #include "movegen.cuh"
 #include "time.h"
 
+#define CUDA_CHECK(call)                                                       \
+    do {                                                                       \
+        cudaError_t err = (call);                                              \
+        if (err != cudaSuccess) {                                              \
+            fprintf(stderr, "CUDA error %s:%d: %s\n", __FILE__, __LINE__,      \
+                    cudaGetErrorString(err));                                  \
+            goto cleanup;                                                      \
+        }                                                                      \
+    } while (0)
+
 // https://en.wikipedia.org/wiki/Xorshift
 __device__ inline uint32_t xorshift32(u32 *s) {
     u32 x = *s;
@@ -52,54 +62,83 @@ __global__ void gpu_playout_kernel(GameState *states, GameResult *results,
 }
 
 int playout_gpu(const GameState *gs, int playouts) {
-    GameState *d_states = nullptr;
-    GameResult *d_results = nullptr;
-    GameResult *h_results = new GameResult[playouts];
+    GameState *d_states = NULL;
+    GameResult *d_results = NULL;
 
-    // Allocate device memory
-    cudaMalloc(&d_states, playouts * sizeof(GameState));
-    cudaMalloc(&d_results, playouts * sizeof(GameResult));
+    GameState *h_states = NULL;
+    GameResult *h_results = NULL;
 
-    // Create a host array with 'playouts' copies of gs
-    GameState *h_states = new GameState[playouts];
-    for (int i = 0; i < playouts; ++i)
+    int score = 0;
+    cudaEvent_t start_evt, stop_evt;
+    float ms = 0.0f;
+
+    CUDA_CHECK(cudaEventCreate(&start_evt));
+    CUDA_CHECK(cudaEventCreate(&stop_evt));
+
+    // host allocations
+    h_states = (GameState *)malloc(playouts * sizeof(GameState));
+    h_results = (GameResult *)malloc(playouts * sizeof(GameResult));
+    if (!h_states || !h_results) {
+        fprintf(stderr, "Host allocation failure.\n");
+        goto cleanup;
+    }
+
+    // fill host states
+    for (int i = 0; i < playouts; i++)
         h_states[i] = *gs;
 
-    cudaMemcpy(d_states, h_states, playouts * sizeof(GameState),
-               cudaMemcpyHostToDevice);
+    // device allocations
+    CUDA_CHECK(cudaMalloc((void **)&d_states, playouts * sizeof(GameState)));
+    CUDA_CHECK(cudaMalloc((void **)&d_results, playouts * sizeof(GameResult)));
 
-    int block = 256;
-    int grid = (playouts + block - 1) / block;
-    gpu_playout_kernel<<<grid, block>>>(d_states, d_results, playouts);
-    cudaDeviceSynchronize();
+    // copy states to device
+    CUDA_CHECK(cudaMemcpy(d_states, h_states, playouts * sizeof(GameState),
+                          cudaMemcpyHostToDevice));
 
-    cudaMemcpy(h_results, d_results, playouts * sizeof(GameResult),
-               cudaMemcpyDeviceToHost);
+    // kernel launch
+    {
+        int block = 256;
+        int grid = (playouts + block - 1) / block;
 
-    // double t0 = now();
-    int score = 0;
-    // reversed because first move has already been applied
-    int is_white = gs->current_player != WHITE;
-    for (int i = 0; i < playouts; ++i) {
-        switch (h_results[i]) {
-            case WHITE_WON:
+        CUDA_CHECK(cudaEventRecord(start_evt, 0));
+        gpu_playout_kernel<<<grid, block>>>(d_states, d_results, playouts);
+        CUDA_CHECK(cudaGetLastError());
+        CUDA_CHECK(cudaDeviceSynchronize());
+        CUDA_CHECK(cudaEventRecord(stop_evt, 0));
+        CUDA_CHECK(cudaEventSynchronize(stop_evt));
+
+        CUDA_CHECK(cudaEventElapsedTime(&ms, start_evt, stop_evt));
+        // printf("Kernel time: %.3f ms\n", ms);
+    }
+
+    // read results back
+    CUDA_CHECK(cudaMemcpy(h_results, d_results, playouts * sizeof(GameResult),
+                          cudaMemcpyDeviceToHost));
+
+    // results aggregation
+    {
+        int is_white = (gs->current_player != WHITE);
+        for (int i = 0; i < playouts; i++) {
+            GameResult r = h_results[i];
+            if (r == WHITE_WON)
                 score += is_white ? +1 : -1;
-                break;
-            case BLACK_WON:
+            else if (r == BLACK_WON)
                 score += is_white ? -1 : +1;
-                break;
-            case DRAW:
-                break;
-            case PENDING:
-                assert(0 && "unreachable");
         }
     }
-    // printf("Summing time: %lf s\n", now() - t0);
 
-    delete[] h_results;
-    delete[] h_states;
-    cudaFree(d_states);
-    cudaFree(d_results);
+cleanup:
+    if (d_states)
+        cudaFree(d_states);
+    if (d_results)
+        cudaFree(d_results);
+    if (h_states)
+        free(h_states);
+    if (h_results)
+        free(h_results);
+
+    cudaEventDestroy(start_evt);
+    cudaEventDestroy(stop_evt);
 
     return score;
 }
