@@ -1,8 +1,8 @@
 #ifndef MOVE_H
 #define MOVE_H
 
-#include <stdint.h>
 #include "board.cuh"
+#include <stdint.h>
 
 #define MOVE_STR_MAX 36
 
@@ -123,11 +123,11 @@ __host__ __device__ void apply_move(Board *board, const Move *m,
         board->black |= to_mask;
 
     // promotion: if not already a king and reaches last row
-    if (with_promotion && (is_king || (is_white && (BOT_ROW & to_mask)) ||
-                           (!is_white && (TOP_ROW & to_mask))))
+    int reached_prom_row = (is_white && (BOT_ROW & to_mask)) ||
+        (!is_white && (TOP_ROW & to_mask));
+    if (is_king || (with_promotion && reached_prom_row))
         board->kings |= to_mask;
 }
-
 
 static void index_to_algebraic(u8 idx, char out[2]) {
     u8 y = 8 - idx / 4;

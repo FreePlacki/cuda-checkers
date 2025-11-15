@@ -112,10 +112,9 @@ __host__ __device__ void force_captures(MoveList *l) {
         if (is_capture(&l->moves[i])) {
             int len = l->moves[i].path_len;
             capture_len = len > capture_len ? len : capture_len;
-            continue;
         }
     }
-    if (!capture_len)
+    if (capture_len == 0)
         return;
 
     // retain only longest captures
@@ -319,6 +318,7 @@ __host__ __device__ void generate_moves(const Board *b, int is_white,
     out->count = 0;
 
     generate_single(b, is_white, out, -1);
+    force_captures(out);
     generate_multi(b, is_white, out);
     force_captures(out);
 }
