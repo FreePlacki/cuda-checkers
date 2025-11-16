@@ -41,7 +41,7 @@ Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
         return l->moves[0];
 
     int is_white = gs->current_player == WHITE;
-    const int total_playouts = 100'000;
+    const int total_playouts = 1'000'000;
     const int playouts = total_playouts / l->count;
     int best_res = -playouts;
     int best_idx = 0;

@@ -97,7 +97,7 @@ int playout_gpu(const GameState *gs, int playouts) {
 
     // kernel launch
     {
-        int block = 256;
+        int block = 32;
         int grid = (playouts + block - 1) / block;
 
         CUDA_CHECK(cudaEventRecord(start_evt, 0));
@@ -147,7 +147,7 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *l) {
     if (l->count == 1)
         return l->moves[0];
 
-    const int total_playouts = 1'000'000;
+    const int total_playouts = 10'000'000;
     const int playouts = total_playouts / l->count;
     double t0 = now();
 

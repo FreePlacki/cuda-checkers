@@ -9,9 +9,10 @@
 #include <stdlib.h>
 #include <string.h>
 
+#define MOVELIST_SIZE 32
 typedef struct MoveList {
-    Move moves[128];
-    int count;
+    Move moves[MOVELIST_SIZE];
+    u8 count;
 } MoveList;
 
 void print_board(const Board *board, const MoveList *mlist,
@@ -42,8 +43,8 @@ void print_board(const Board *board, const MoveList *mlist,
             }
             if (valid)
                 printf("%c ", c);
-            else if (last_move->path_len > 1 && (last_move->path[0] == idx ||
-                     last_move->path[1] == idx))
+            else if (last_move->path_len > 1 &&
+                     (last_move->path[0] == idx || last_move->path[1] == idx))
                 printf(FORM_FADE FORM_UNDER "%c" FORM_END " ", c);
             else
                 printf(FORM_FADE "%c " FORM_END, c);
@@ -149,7 +150,7 @@ __host__ __device__ inline int ctz32(u32 x) {
 }
 
 __host__ __device__ void gen_shift_moves(u32 own, u32 free, int shift,
-                                                MoveList *out) {
+                                         MoveList *out) {
     u32 shifted = shift > 0 ? rotl(own, shift) : rotr(own, -shift);
 
     u32 moves = shifted & free;
@@ -168,8 +169,8 @@ __host__ __device__ void gen_shift_moves(u32 own, u32 free, int shift,
     }
 }
 
-__host__ __device__ int gen_shift_capture(u32 ownp, u32 ene, u32 free,
-                                                 int step, MoveList *out) {
+__host__ __device__ int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
+                                          MoveList *out) {
     u32 nei = step > 0 ? rotl(ownp, step) : rotr(ownp, -step);
     nei &= ene;
     u32 dst = (step > 0) ? rotl(nei, step) : rotr(nei, -step);
@@ -194,7 +195,7 @@ __host__ __device__ int gen_shift_capture(u32 ownp, u32 ene, u32 free,
 }
 
 __host__ __device__ int generate_single(const Board *b, int is_white,
-                                               MoveList *out, int mask) {
+                                        MoveList *out, int mask) {
     out->count = 0;
 
     const u32 own = is_white ? b->white : b->black;
@@ -244,7 +245,7 @@ typedef struct {
     Board board;
 } StackNode;
 
-#define MOVES_STCK_MAX 64
+#define MOVES_STCK_MAX 32
 
 typedef struct {
     StackNode nodes[MOVES_STCK_MAX];
@@ -261,7 +262,7 @@ __host__ __device__ int push(StackNode n, MoveS *s) {
 __host__ __device__ StackNode pop(MoveS *s) { return s->nodes[--s->sp]; }
 
 __host__ __device__ void generate_multi(const Board *b, int is_white,
-                                               MoveList *out) {
+                                        MoveList *out) {
     if (!is_capture(&out->moves[0]))
         return;
 
@@ -277,20 +278,19 @@ __host__ __device__ void generate_multi(const Board *b, int is_white,
         push(n, &st);
     }
 
-    MoveList res;
-    res.count = 0;
+    out->count = 0;
+    MoveList next; // TODO: we don't need this to have size MOVELIST_SIZE, only 4
 
     while (st.sp) {
         StackNode cur = pop(&st);
 
-        MoveList next;
         next.count = 0;
 
         int last = cur.m.path[cur.m.path_len - 1];
         int found_capture =
             generate_single(&cur.board, is_white, &next, 1 << last);
         if (!found_capture) {
-            append_move(&res, cur.m);
+            append_move(out, cur.m);
             continue;
         }
 
@@ -309,8 +309,6 @@ __host__ __device__ void generate_multi(const Board *b, int is_white,
             push(child, &st);
         }
     }
-
-    *out = res;
 }
 
 __host__ __device__ void generate_moves(const Board *b, int is_white,

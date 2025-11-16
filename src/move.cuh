@@ -6,10 +6,17 @@
 
 #define MOVE_STR_MAX 36
 
+// TODO: Optimize the size
+// idea:
+// u32 path  -- bitmask of piece intermediate positions and captures
+// u8 begin  -- initial piece position
+// u8 end    -- final piece position
+// total size: 8 bytes
+// cons: we cannot implement flying king rules with this approach
 typedef struct {
-    u32 captured; // mask for pieces captured by this move
     u8 path[10];  // sequence of visited squares: from, ..., to
     u8 path_len;  // number of squares in path (>=2)
+    u32 captured; // mask for pieces captured by this move
 } Move;
 
 static inline int pos_to_index(char file, char rank) {
@@ -96,7 +103,7 @@ int parse_move(const char *str, Move *out) {
         }
 
         if (is_capture) {
-            int mid = (src + step) % 32;
+            int mid = (src + step) & 31;
             out->captured |= (1u << mid);
         }
     }
