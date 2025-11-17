@@ -32,7 +32,7 @@ do zareprezentowania pozycji pionka potrzeba nam 32 bitów.
 
 Przykładowo aby sprawdzić czy na pozycji o indeksie `x` znajduje się biały król:
 
-`(1 << x) & board.white & board.king != 0`
+`(1 << x) & board.white & board.king != 0`.
 
 Na pierwszy rzut oka intuicyjnym indeksowaniem wydawało by się coś w stylu:
 ```
@@ -51,7 +51,7 @@ Ale dodatkowo te w parzystych wierszach (numerowane od 0 od dołu) mogą ruszać
 a te w nieparzystych o $plus.minus 5$. Powoduje to znaczne komplikacje algorytmu generowania dozwolonych
 ruchów (a co za tym idzie gorsza wydajność).
 
-Okazuje się, że istnieje lepsze indeksowanie:
+Okazuje się, że istnieje #link("https://3dkingdoms.com/checkers/bitboards.htm#A1")[lepsze indeksowanie]:
 
 ```
    11  05  31  25 
@@ -100,3 +100,38 @@ odpowiednio indeksy początku i końca ścieżki.
 Uzyskujemy znacznie lepsze zużycie pamięci (8 vs 16 bajtów) kosztem nieco trudniejszego korzystania.
 W tej reprezencacji nie możemy na przykład zareprezentować ruchów króli jeżeli 
 mogliby poruszać się o dowolną ilość pól.
+
+== Algorytm Monte-Carlo
+
+Przyjmijmy bso. że gramy białymi a nasz przeciwnik czarnymi pionkami.
+Jesteśmy w pewnym momencie rozgrywki i musimy wybrać jeden z $N$ dostępnych ruchów.
+
+=== "Flat" Monte-Carlo
+
+Najprostszym pomysłem jest rozegrać dla każdego z możliwych posunięć $k$ losowych
+partii a następnie wybrać ruch maksymalizujący ilość wygranych minus ilość przegranych:
+
+$$$
+"argmax"_(i = 1, ..., N) sum_(j = 1)^k w_j
+$$$
+
+gdzie
+$$$
+w_j = cases(
+  +1 "jeśli" j-"ta gra zakończyła się wygraną białego",
+  -1 "jeśli" j-"ta gra zakończyła się przegraną białego",
+  "  0 jeśli" j-"ta gra zakończyła się remisem",
+)
+$$$.
+
+Takie podejście można w naturalny sposób napisać dla GPU -- każdy wątek gra do
+końca na swojej planszy i raportuje wynik (wygrana/przegrana/remis).
+
+Wywołujemy kernel dla każdego możliwego ruchu początkowego i po wywołaniu każdego
+zliczamy jego wynik.
+
+=== Monte-Carlo Tree Search
+
+Powyższa metoda ma znaczącą wadę -- spędza tyle samo czasu na każdym ruchu.
+Po wykonaniu pewnej liczby symulacji często wiemy już które ruchy wydają się
+być lepsze od innych i to na nich powinniśmy się skupiać (alokować większą ilość symulacji)
