@@ -55,6 +55,8 @@ void print_board(const Board *board, const MoveList *mlist,
 }
 
 __host__ __device__ void append_move(MoveList *l, Move m) {
+    if (l->count == MOVELIST_SIZE)
+        return;
     l->moves[l->count++] = m;
 }
 
@@ -279,7 +281,8 @@ __host__ __device__ void generate_multi(const Board *b, int is_white,
     }
 
     out->count = 0;
-    MoveList next; // TODO: we don't need this to have size MOVELIST_SIZE, only 4
+    MoveList
+        next; // TODO: we don't need this to have size MOVELIST_SIZE, only 4
 
     while (st.sp) {
         StackNode cur = pop(&st);

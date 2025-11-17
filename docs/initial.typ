@@ -10,6 +10,7 @@ Przyjęte zasady to #link("https://en.wikipedia.org/wiki/Checkers")[warcaby amer
 - Pionki ruszają się o jeden tylko do przodu.
 - Króle ruszają się o jeden do przodu i do tyły.
 - Przymus bicia -- można wybrać dowolne z najdłuższych.
+- Remis po 50 ruchach bez bicia.
 
 Przyjęcie zasad amerykańskich w odróżnieniu do innych (w których dla przykładu króle mogą
 poruszać się dowolną ilość pól) pozwala na pewne ciekawe optymalizacje (o tym później).
@@ -21,9 +22,9 @@ Plansza reprezentowana jest na 12 bajtach:
 
 ```c
 typedef struct {
-    u32 white;
-    u32 black;
-    u32 kings;
+    uint32_t white;
+    uint32_t black;
+    uint32_t kings;
 } Board;
 ```
 
@@ -73,9 +74,9 @@ Pierwszym pomysłem jest następująca reprezentacja (16 bajtów):
 
 ```c
 typedef struct {
-    u8 path[10];
-    u8 path_len;
-    u32 captured;
+    uint8_t path[10];
+    uint8_t path_len;
+    uint32_t captured;
 } Move;
 ```
 
@@ -88,9 +89,9 @@ Prawdopowobnie lepiej będzie przyjąć bardziej skompresowaną wersję (8 bajt�
 
 ```c
 typedef struct {
-  u32 path;
-  u8 begin;
-  u8 end;
+  uint32_t path;
+  uint8_t begin;
+  uint8_t end;
 } Move;
 ```
 
@@ -101,37 +102,83 @@ Uzyskujemy znacznie lepsze zużycie pamięci (8 vs 16 bajtów) kosztem nieco tru
 W tej reprezencacji nie możemy na przykład zareprezentować ruchów króli jeżeli 
 mogliby poruszać się o dowolną ilość pól.
 
-== Algorytm Monte-Carlo
+== Algorytm Monte Carlo
 
 Przyjmijmy bso. że gramy białymi a nasz przeciwnik czarnymi pionkami.
 Jesteśmy w pewnym momencie rozgrywki i musimy wybrać jeden z $N$ dostępnych ruchów.
 
-=== "Flat" Monte-Carlo
+=== "Flat" Monte Carlo
 
 Najprostszym pomysłem jest rozegrać dla każdego z możliwych posunięć $k$ losowych
 partii a następnie wybrać ruch maksymalizujący ilość wygranych minus ilość przegranych:
 
 $$$
-"argmax"_(i = 1, ..., N) sum_(j = 1)^k w_j
-$$$
-
-gdzie
-$$$
-w_j = cases(
-  +1 "jeśli" j-"ta gra zakończyła się wygraną białego",
-  -1 "jeśli" j-"ta gra zakończyła się przegraną białego",
-  "  0 jeśli" j-"ta gra zakończyła się remisem",
+"argmax"_(i = 1, ..., N) sum_(j = 1)^k s_j, & quad 
+s_j = cases(
+  +1 "jeśli" j"-ta gra zakończyła się wygraną białego",
+  -1 "jeśli" j"-ta gra zakończyła się przegraną białego",
+  "  0 jeśli" j"-ta gra zakończyła się remisem",
 )
-$$$.
+$$$
 
 Takie podejście można w naturalny sposób napisać dla GPU -- każdy wątek gra do
 końca na swojej planszy i raportuje wynik (wygrana/przegrana/remis).
-
 Wywołujemy kernel dla każdego możliwego ruchu początkowego i po wywołaniu każdego
 zliczamy jego wynik.
 
-=== Monte-Carlo Tree Search
+=== Monte Carlo Tree Search
 
 Powyższa metoda ma znaczącą wadę -- spędza tyle samo czasu na każdym ruchu.
 Po wykonaniu pewnej liczby symulacji często wiemy już które ruchy wydają się
-być lepsze od innych i to na nich powinniśmy się skupiać (alokować większą ilość symulacji)
+być lepsze od innych i to na nich powinniśmy się skupiać (alokować większą ilość symulacji).
+
+#link("https://en.wikipedia.org/wiki/Monte_Carlo_tree_search")[Monte Carlo Tree Search] można podzielić na 4 etapy:
+1. _Selection_: zaczynamy z pozycji początkowej (korzenia) i wybieramy kolejne plansze (dzieci)
+biorąc pod uwagę rezulataty gier w ich poddrzewach:
+
+Najczęściej używana jest w selekcji wartość wyrażenia:
+$$$
+w_i / n_i + c sqrt(ln(N_i)/n_i)
+$$$
+
+gdzie $w_i/n_i$ - wygrane w stosunku do ilości rozgrywek w poddrzewie (faworyzuje lepsze ruchy),
+$c sqrt(ln(N_i) / n_i)$ - faworyzuje mniej eksplorowane poddrzewa ($N_i$ to liczba symulacji w rodzicu).
+
+2. _Expansion_: Jeśli wybrany wierzchołek nie jest zakończoną grą, robimy losowy ruch,
+tworząc nowy wierzchołek.
+
+3. _Simulation_: Dla nowego wierzchołka wykonujemy jedną symulację (do zakończenia gry).
+
+4. _Backpropagation_: Znając rezultat symulacji, aktualizujemy dane w wierzchołkach --
+liczba wygranych i liczba rozgrywek. W przypadku remisu zwiększamy liczbę wygranych o 0.5
+(ewentualnie można przeskalować wszystkie wartości x$2$ aby nie używać `float`ów).
+
+#image("MCTS-steps.svg")
+
+TODO: napisać o tym, że tą metodę można przerwać w dowolnym momencie.
+
+== Generowanie liczb losowych
+
+Algorytm potrzebuje metody generowania losowej liczby do wybrania jednego z dostępnych ruchów.
+
+Liczy się dla nas raczej szybkość niż "jakość" generowania. Dobrym wyborem wydaje się
+#link("https://en.wikipedia.org/wiki/Xorshift")[xorshift32], który używa jedynie
+trzech shiftów i trzech xorów:
+
+```c
+uint32_t xorshift32(uint32_t *seed) {
+    uint32_t x = *seed;
+    x ^= x << 13;
+    x ^= x >> 17;
+    x ^= x << 5;
+    return *seed = x;
+}
+```
+
+gdzie `seed` może być zainicjalizowany w każdym wątku:
+```c
+int id = blockIdx.x * blockDim.x + threadIdx.x;
+uint32_t seed = 0x9E3779B9 ^ id;
+```
+
+Magiczna stała `0x9E3779B9` to $floor(2^32 slash phi)$, często używana jako "losowe" bity.

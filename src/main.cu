@@ -28,8 +28,6 @@ typedef enum {
 } AiLevel;
 
 static AiLevel choose_ai_level() {
-    dbg(sizeof(Move));
-    dbg(sizeof(Board));
     for (;;) {
         printf("Choose AI level:\n");
         printf("1.\tRandom\n");

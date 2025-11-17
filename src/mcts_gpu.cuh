@@ -19,13 +19,12 @@
     } while (0)
 
 // https://en.wikipedia.org/wiki/Xorshift
-__device__ inline uint32_t xorshift32(u32 *s) {
+__device__ inline u32 xorshift32(u32 *s) {
     u32 x = *s;
     x ^= x << 13;
     x ^= x >> 17;
     x ^= x << 5;
-    *s = x;
-    return x;
+    return *s = x;
 }
 
 __device__ GameResult playout_device(GameState *gs, u32 rand_seed) {
@@ -56,6 +55,7 @@ __global__ void gpu_playout_kernel(GameState *states, GameResult *results,
         return;
 
     GameState s = states[id];
+    // floor(2^32 / phi)
     u32 seed = 0x9E3779B9u ^ id;
 
     results[id] = playout_device(&s, seed);
