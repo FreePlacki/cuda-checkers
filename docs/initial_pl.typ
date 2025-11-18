@@ -117,7 +117,7 @@ $$$
 s_j = cases(
   +1 "jeśli" j"-ta gra zakończyła się wygraną białego",
   -1 "jeśli" j"-ta gra zakończyła się przegraną białego",
-  "  0 jeśli" j"-ta gra zakończyła się remisem",
+   0 "jeśli" j"-ta gra zakończyła się remisem",
 )
 $$$
 
@@ -125,6 +125,8 @@ Takie podejście można w naturalny sposób napisać dla GPU -- każdy wątek gr
 końca na swojej planszy i raportuje wynik (wygrana/przegrana/remis).
 Wywołujemy kernel dla każdego możliwego ruchu początkowego i po wywołaniu każdego
 zliczamy jego wynik.
+
+#pagebreak()
 
 === Monte Carlo Tree Search
 
@@ -155,7 +157,13 @@ liczba wygranych i liczba rozgrywek. W przypadku remisu zwiększamy liczbę wygr
 
 #image("MCTS-steps.svg")
 
-TODO: napisać o tym, że tą metodę można przerwać w dowolnym momencie.
+Implementacja:
+1. CPU wybiera ileś liści i _expanduje_ każdy wybrany
+2. GPU dla każdego z wybranych liści robi ustaloną liczbę symulacji (np. 32)
+3. CPU robi _backpropagation_
+4. Powtarzamy aż skończy się czas na zrobienie ruchu
+
+#pagebreak()
 
 == Generowanie liczb losowych
 
@@ -166,19 +174,19 @@ Liczy się dla nas raczej szybkość niż "jakość" generowania. Dobrym wyborem
 trzech shiftów i trzech xorów:
 
 ```c
-uint32_t xorshift32(uint32_t *seed) {
-    uint32_t x = *seed;
+uint32_t xorshift32(uint32_t *state) {
+    uint32_t x = *state;
     x ^= x << 13;
     x ^= x >> 17;
     x ^= x << 5;
-    return *seed = x;
+    return *state = x;
 }
 ```
 
-gdzie `seed` może być zainicjalizowany w każdym wątku:
+gdzie `state` może być zainicjalizowany w każdym wątku:
 ```c
 int id = blockIdx.x * blockDim.x + threadIdx.x;
-uint32_t seed = 0x9E3779B9 ^ id;
+uint32_t state = 0x9E3779B9 ^ id;
 ```
 
 Magiczna stała `0x9E3779B9` to $floor(2^32 slash phi)$, często używana jako "losowe" bity.
