@@ -30,12 +30,6 @@ Move choose_move_rand(const GameState *gs, const MoveList *l) {
     return l->moves[r];
 }
 
-static double now(void) {
-    struct timespec t;
-    clock_gettime(CLOCK_MONOTONIC, &t);
-    return t.tv_sec + t.tv_nsec * 1e-9;
-}
-
 Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
     if (l->count == 1)
         return l->moves[0];
@@ -46,7 +40,7 @@ Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
     int best_res = -playouts;
     int best_idx = 0;
 
-    double t0 = now();
+    double t0 = clock();
     for (int i = 0; i < l->count; ++i) {
         int score = 0;
         GameState st = *gs;
@@ -73,7 +67,7 @@ Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
         }
     }
     printf("valuation: %lf\nplayouts: %d\ntook: %lf s\n",
-           (double)best_res / playouts, total_playouts, now() - t0);
+           (double)best_res / playouts, total_playouts, (double)(clock() - t0) / CLOCKS_PER_SEC);
 
     return l->moves[best_idx];
 }

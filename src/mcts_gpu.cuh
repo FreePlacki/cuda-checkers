@@ -149,11 +149,11 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *l) {
 
     const int total_playouts = 10'000'000;
     const int playouts = total_playouts / l->count;
-    double t0 = now();
 
     int best_score = -playouts;
     int best_idx = 0;
 
+    double t0 = clock();
     for (int i = 0; i < l->count; ++i) {
 
         GameState next = *gs;
@@ -169,7 +169,7 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *l) {
     }
 
     printf("valuation: %.4f\nplayouts: %d\ntook: %lf s\n",
-           (double)best_score / playouts, total_playouts, now() - t0);
+           (double)best_score / playouts, total_playouts, (double)(clock() - t0) / CLOCKS_PER_SEC);
 
     return l->moves[best_idx];
 }

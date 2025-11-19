@@ -17,6 +17,9 @@ make
 
 See [logs](https://github.com/FreePlacki/cuda-checkers/edit/main/logs) directory for file syntax.
 
+NOTE: on Windows add to nvcc flags: `-ccbin "path\to\cl.exe directory"`,
+ex. "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64"
+
 ## Performance
 
 Currently achieving about 10 milion playouts (games simulated till the end) per second on a 3060 Ti.

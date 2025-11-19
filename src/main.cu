@@ -13,6 +13,10 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 void usage(char *pname) {
     fprintf(stderr,
             "Usage\t%s logfile.txt [init.txt]\ninit.txt - moves file to use "
@@ -211,11 +215,17 @@ GameMode choose_game_mode() {
 
 int main(int argc, char **argv) {
     srand(time(0));
+#ifdef _WIN32
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode = 0;
+    GetConsoleMode(hConsole, &mode);
+    SetConsoleMode(hConsole, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#endif
 
     cudaError_t cudaStatus = cudaSetDevice(0);
     int noCudaDevice = cudaStatus != cudaSuccess;
     if (noCudaDevice) {
-        printf("No CUDA device found!\n");
+        printf("cudaSetDevice failed: %d (%s)\n", cudaStatus, cudaGetErrorString(cudaStatus));
     }
 
     GameState game;

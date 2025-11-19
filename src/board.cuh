@@ -5,9 +5,9 @@
 #include "stdint.h"
 
 #ifdef FORMATTING
-#define FORM_END "\e[m"
-#define FORM_FADE "\e[2m"
-#define FORM_UNDER "\e[4m"
+#define FORM_END "\x1b[m"
+#define FORM_FADE "\x1b[2m"
+#define FORM_UNDER "\x1b[4m"
 #else
 #define FORM_END ""
 #define FORM_FADE ""

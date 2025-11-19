@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <intrin.h>
 
 #define MOVELIST_SIZE 32
 typedef struct MoveList {
@@ -144,11 +145,15 @@ __host__ __device__ inline u32 rotr(u32 x, u8 n) {
 
 // counts the number of consecutive 0s (from least significant)
 __host__ __device__ inline int ctz32(u32 x) {
-#ifdef __CUDA_ARCH__
-    return __ffs(x) - 1;
+#if defined(__CUDA_ARCH__)
+    return __ffs(x) - 1;          // GPU
+#elif defined(_MSC_VER)
+    unsigned long idx;
+    _BitScanForward(&idx, x);     // CPU on Windows
+    return idx;
 #else
-    return __builtin_ctz(x);
-#endif /* __CUDA_ARCH__ */
+    return __builtin_ctz(x);      // CPU on Linux/Clang/GCC
+#endif
 }
 
 __host__ __device__ void gen_shift_moves(u32 own, u32 free, int shift,
