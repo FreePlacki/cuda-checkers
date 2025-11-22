@@ -60,7 +60,7 @@ int parse_move(const char *str, Move *out) {
                 return 0;
             if (out->path_len >= 10)
                 return 0;
-            out->path[out->path_len++] = (uint8_t)idx;
+            out->path[out->path_len++] = (u8)idx;
             str += 2;
             expect_square = 0;
         } else {

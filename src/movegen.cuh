@@ -8,7 +8,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef _WIN32
 #include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
 
 #define MOVELIST_SIZE 32
 typedef struct MoveList {
@@ -136,23 +140,31 @@ __host__ __device__ void force_captures(MoveList *l) {
 #define CAN_DR 0xFDF9EDBC // can move -7
 #define CAN_DL 0xFBFBEBBA // can move -1
 
-__host__ __device__ inline u32 rotl(u32 x, u8 n) {
-    return (x << n) | (x >> (32 - n));
+__host__ __device__ __forceinline__ u32 rotl(u32 x, u8 n) {
+#if defined(__CUDA_ARCH__)
+    return __funnelshift_l(x, x, n);
+#else
+    return _rotl(x, n);
+#endif
 }
-__host__ __device__ inline u32 rotr(u32 x, u8 n) {
-    return (x >> n) | (x << (32 - n));
+__host__ __device__ __forceinline__ u32 rotr(u32 x, u8 n) {
+#if defined(__CUDA_ARCH__)
+    return __funnelshift_r(x, x, n);
+#else
+    return _rotr(x, n);
+#endif
 }
 
 // counts the number of consecutive 0s (from least significant)
-__host__ __device__ inline int ctz32(u32 x) {
+__host__ __device__ __forceinline__ int ctz32(u32 x) {
 #if defined(__CUDA_ARCH__)
-    return __ffs(x) - 1;          // GPU
+    return __ffs(x) - 1;
 #elif defined(_MSC_VER)
     unsigned long idx;
-    _BitScanForward(&idx, x);     // CPU on Windows
+    _BitScanForward(&idx, x);
     return idx;
 #else
-    return __builtin_ctz(x);      // CPU on Linux/Clang/GCC
+    return __builtin_ctz(x);
 #endif
 }
 
