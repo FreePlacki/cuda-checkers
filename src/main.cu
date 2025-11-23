@@ -89,7 +89,7 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
     static Move m;
     MoveList mlist;
 
-    int is_white = (game->current_player == WHITE);
+    int is_white = game->current_player == WHITE;
     int is_ai = is_white ? white_is_ai : black_is_ai;
     AiLevel lvl = is_white ? white_ai_level : black_ai_level;
 
@@ -97,7 +97,7 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 
     if (is_ai) {
         if (pause)
-            print_board(&game->board, &mlist, &m);
+            print_board(&game->board, &mlist, m, is_white);
 
         if (mlist.count == 0) {
             printf("NO VALID MOVES!\n");
@@ -106,14 +106,14 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 
         m = choose_ai_move(game, &mlist, lvl);
 
-        move_to_str(&m, input);
+        move_to_str(&game->board, m, is_white, input);
         printf("AI (%c) chose %s\n", is_white ? 'w' : 'b', input);
-        assert(is_valid_move(&m, &mlist));
+        assert(is_valid_move(m, &mlist));
 
     } else {
-        print_board(&game->board, &mlist, &m);
+        print_board(&game->board, &mlist, m, is_white);
         printf("\nPossible moves:\n");
-        print_movelist(&mlist);
+        print_movelist(&game->board, &mlist, is_white);
 
         printf("\nPlayer (%c) move: ", is_white ? 'w' : 'b');
         if (!fgets(input, sizeof(input), stdin))
@@ -124,18 +124,18 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
             printf("Incorrect move format.\n");
             return 0;
         }
-        if (!is_valid_move(&m, &mlist)) {
+        if (!is_valid_move(m, &mlist)) {
             printf("Invalid move.\n");
             return 0;
         }
     }
 
-    apply_move(&game->board, &m, 1);
-    move_to_str(&m, input);
+    move_to_str(&game->board, m, is_white, input);
+    apply_move(&game->board, m, is_white, 1);
     if (logfile)
         fprintf(logfile, "%s\n", input);
 
-    next_turn(game, is_capture(&m));
+    next_turn(game, is_capture(m));
 
     if (pause) {
         printf("Press ENTER to continue...\n");

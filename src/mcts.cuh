@@ -13,12 +13,13 @@ GameResult playout(const GameState *gs) {
     memcpy(&state, gs, sizeof(GameState));
 
     for (;;) {
-        generate_moves(&state.board, state.current_player == WHITE, &mlist);
+        int is_white = state.current_player == WHITE;
+        generate_moves(&state.board, is_white, &mlist);
         if (mlist.count == 0)
-            return state.current_player == WHITE ? BLACK_WON : WHITE_WON;
+            return is_white ? BLACK_WON : WHITE_WON;
         Move m = mlist.moves[rand() % mlist.count];
-        apply_move(&state.board, &m, 1);
-        next_turn(&state, is_capture(&m));
+        apply_move(&state.board, m, is_white, 1);
+        next_turn(&state, is_capture(m));
         GameResult res = game_result(&state);
         if (res != PENDING)
             return res;
@@ -44,8 +45,8 @@ Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
     for (int i = 0; i < l->count; ++i) {
         int score = 0;
         GameState st = *gs;
-        apply_move(&st.board, &l->moves[i], 1);
-        next_turn(&st, is_capture(&l->moves[i]));
+        apply_move(&st.board, l->moves[i], st.current_player == WHITE, 1);
+        next_turn(&st, is_capture(l->moves[i]));
 
         for (int j = 0; j < playouts; ++j) {
             switch (playout(&st)) {
@@ -67,7 +68,8 @@ Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
         }
     }
     printf("valuation: %lf\nplayouts: %d\ntook: %lf s\n",
-           (double)best_res / playouts, total_playouts, (double)(clock() - t0) / CLOCKS_PER_SEC);
+           (double)best_res / playouts, total_playouts,
+           (double)(clock() - t0) / CLOCKS_PER_SEC);
 
     return l->moves[best_idx];
 }

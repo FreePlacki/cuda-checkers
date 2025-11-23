@@ -8,11 +8,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef _WIN32
-#include <intrin.h>
-#else
-#include <x86intrin.h>
-#endif
 
 #define MOVELIST_SIZE 32
 typedef struct MoveList {
@@ -20,8 +15,8 @@ typedef struct MoveList {
     u8 count;
 } MoveList;
 
-void print_board(const Board *board, const MoveList *mlist,
-                 const Move *last_move) {
+void print_board(const Board *board, const MoveList *mlist, Move last_move,
+                 int is_white) {
     printf("\n  a b c d e f g h\n");
     for (int y = 0; y < 8; ++y) {
         printf("%d ", 8 - y);
@@ -32,27 +27,27 @@ void print_board(const Board *board, const MoveList *mlist,
                 printf(FORM_FADE ". " FORM_END);
                 continue;
             }
-            u32 mask = 1 << idx;
+            u32 mask = 1u << idx;
             if (board->white & mask) {
                 c = board->kings & mask ? 'W' : 'w';
             } else if (board->black & mask) {
                 c = board->kings & mask ? 'B' : 'b';
             }
-            mask <<= 1;
             int valid = 0;
             for (int i = 0; i < mlist->count; ++i) {
-                if (mlist->moves[i].path[0] == idx) {
+                if (move_start(board, mlist->moves[i], is_white) & mask) {
                     valid = 1;
                     break;
                 }
             }
             if (valid)
                 printf("%c ", c);
-            else if (last_move->path_len > 1 &&
-                     (last_move->path[0] == idx || last_move->path[1] == idx))
+            else if (move_start(board, last_move, is_white) & mask ||
+                     (move_end(board, last_move, is_white) & mask))
                 printf(FORM_FADE FORM_UNDER "%c" FORM_END " ", c);
             else
                 printf(FORM_FADE "%c " FORM_END, c);
+            mask <<= 1;
         }
         printf("%d\n", 8 - y);
     }
@@ -70,7 +65,7 @@ static int pstrcmp(const void *a, const void *b) {
     return strcmp(*(const char **)a, *(const char **)b);
 }
 
-void print_movelist(const MoveList *l) {
+void print_movelist(const Board *board, const MoveList *l, int is_white) {
     if (l->count == 0)
         return;
     char **moves_str = (char **)malloc(l->count * sizeof(char *));
@@ -79,7 +74,7 @@ void print_movelist(const MoveList *l) {
 
     for (int i = 0; i < l->count; ++i) {
         moves_str[i] = (char *)malloc(sizeof(char *));
-        move_to_str(&l->moves[i], moves_str[i]);
+        move_to_str(board, l->moves[i], is_white, moves_str[i]);
     }
 
     qsort(moves_str, l->count, sizeof(moves_str[0]), pstrcmp);
@@ -96,18 +91,9 @@ void print_movelist(const MoveList *l) {
     free(moves_str);
 }
 
-int is_valid_move(const Move *m, const MoveList *l) {
+int is_valid_move(Move m, const MoveList *l) {
     for (int i = 0; i < l->count; ++i) {
-        if (m->path_len != l->moves[i].path_len)
-            continue;
-        int match = 1;
-        for (int j = 0; j < m->path_len; ++j) {
-            if (m->path[j] != l->moves[i].path[j]) {
-                match = 0;
-                break;
-            }
-        }
-        if (match)
+        if (m == l->moves[i])
             return 1;
     }
 
@@ -117,55 +103,21 @@ int is_valid_move(const Move *m, const MoveList *l) {
 __host__ __device__ void force_captures(MoveList *l) {
     int capture_len = 0;
     for (int i = 0; i < l->count; ++i) {
-        if (is_capture(&l->moves[i])) {
-            int len = l->moves[i].path_len;
+        if (is_capture(l->moves[i])) {
+            int len = popcnt(l->moves[i]);
             capture_len = len > capture_len ? len : capture_len;
         }
     }
     if (capture_len == 0)
         return;
 
-    // retain only longest captures
     int cnt = 0;
     for (int i = 0; i < l->count; ++i) {
-        if (is_capture(&l->moves[i]) && l->moves[i].path_len == capture_len) {
+        if (is_capture(l->moves[i])) {
             l->moves[cnt++] = l->moves[i];
         }
     }
     l->count = cnt;
-}
-
-#define CAN_UR 0x7DFDF5DD // can move +1
-#define CAN_UL 0x79FBF3DB // can move +7
-#define CAN_DR 0xFDF9EDBC // can move -7
-#define CAN_DL 0xFBFBEBBA // can move -1
-
-__host__ __device__ __forceinline__ u32 rotl(u32 x, u8 n) {
-#if defined(__CUDA_ARCH__)
-    return __funnelshift_l(x, x, n);
-#else
-    return _rotl(x, n);
-#endif
-}
-__host__ __device__ __forceinline__ u32 rotr(u32 x, u8 n) {
-#if defined(__CUDA_ARCH__)
-    return __funnelshift_r(x, x, n);
-#else
-    return _rotr(x, n);
-#endif
-}
-
-// counts the number of consecutive 0s (from least significant)
-__host__ __device__ __forceinline__ int ctz32(u32 x) {
-#if defined(__CUDA_ARCH__)
-    return __ffs(x) - 1;
-#elif defined(_MSC_VER)
-    unsigned long idx;
-    _BitScanForward(&idx, x);
-    return idx;
-#else
-    return __builtin_ctz(x);
-#endif
 }
 
 __host__ __device__ void gen_shift_moves(u32 own, u32 free, int shift,
@@ -206,7 +158,7 @@ __host__ __device__ int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
 
         Move m;
         simple_move(src_idx, dst_idx, &m);
-        m.captured = 1u << cap_idx;
+        m |= 1u << cap_idx;
         append_move(out, m);
     }
 
@@ -282,7 +234,7 @@ __host__ __device__ StackNode pop(MoveS *s) { return s->nodes[--s->sp]; }
 
 __host__ __device__ void generate_multi(const Board *b, int is_white,
                                         MoveList *out) {
-    if (!is_capture(&out->moves[0]))
+    if (!is_capture(out->moves[0]))
         return;
 
     MoveS st;
@@ -293,22 +245,21 @@ __host__ __device__ void generate_multi(const Board *b, int is_white,
         StackNode n;
         n.m = out->moves[i];
         memcpy(&n.board, b, sizeof(Board));
-        apply_move(&n.board, &n.m, 0);
+        apply_move(&n.board, n.m, is_white, 0);
         push(n, &st);
     }
 
     out->count = 0;
-    MoveList
-        next; // TODO: we don't need this to have size MOVELIST_SIZE, only 4
+    // TODO: we don't need this to have size MOVELIST_SIZE, only 4
+    MoveList next;
 
     while (st.sp) {
         StackNode cur = pop(&st);
 
         next.count = 0;
 
-        int last = cur.m.path[cur.m.path_len - 1];
-        int found_capture =
-            generate_single(&cur.board, is_white, &next, 1 << last);
+        u32 last = move_end(b, cur.m, is_white);
+        int found_capture = generate_single(&cur.board, is_white, &next, last);
         if (!found_capture) {
             append_move(out, cur.m);
             continue;
@@ -318,13 +269,13 @@ __host__ __device__ void generate_multi(const Board *b, int is_white,
             Move extended = cur.m;
             Move step = next.moves[i];
 
-            extended.path[extended.path_len++] = step.path[1];
-            extended.captured |= step.captured;
+            extended |= step;
+            extended &= ~move_start(&cur.board, step, is_white);
 
             StackNode child;
             child.m = extended;
             memcpy(&child.board, &cur.board, sizeof(Board));
-            apply_move(&child.board, &step, 0);
+            apply_move(&child.board, step, is_white, 0);
 
             push(child, &st);
         }

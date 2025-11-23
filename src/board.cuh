@@ -1,8 +1,13 @@
 #ifndef BOARD_H
 #define BOARD_H
 
-#include <stdio.h>
 #include "stdint.h"
+#include <stdio.h>
+#ifdef _WIN32
+#include <intrin.h>
+#else
+#include <x86intrin.h>
+#endif
 
 #ifdef FORMATTING
 #define FORM_END "\x1b[m"
@@ -45,6 +50,11 @@ typedef struct {
     u32 kings;
 } Board;
 
+#define CAN_UR 0x7DFDF5DD // can move +1
+#define CAN_UL 0x79FBF3DB // can move +7
+#define CAN_DR 0xFDF9EDBC // can move -7
+#define CAN_DL 0xFBFBEBBA // can move -1
+
 const int idx_to_board[32] = {
     11, 5,  31, 25, 10, 4,  30, 24, 3,  29, 23, 17, 2,  28, 22, 16,
     27, 21, 15, 9,  26, 20, 14, 8,  19, 13, 7,  1,  18, 12, 6,  0,
@@ -54,6 +64,21 @@ void init_board(Board *board) {
     board->kings = 0;
     board->white = 0xE3820C38; // top 3 rows
     board->black = 0x041C71C3; // bot 3 rows
+}
+
+__host__ __device__ __forceinline__ u32 rotl(u32 x, u8 n) {
+#if defined(__CUDA_ARCH__)
+    return __funnelshift_l(x, x, n);
+#else
+    return _rotl(x, n);
+#endif
+}
+__host__ __device__ __forceinline__ u32 rotr(u32 x, u8 n) {
+#if defined(__CUDA_ARCH__)
+    return __funnelshift_r(x, x, n);
+#else
+    return _rotr(x, n);
+#endif
 }
 
 #endif /* BOARD_H */
