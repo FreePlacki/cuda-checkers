@@ -140,8 +140,10 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 
     move_to_str(&game->board, m, is_white, input);
     apply_move(&game->board, m, is_white, 1);
-    if (logfile)
+    if (logfile) {
         fprintf(logfile, "%s\n", input);
+        fflush(logfile);
+    }
 
     next_turn(game, is_capture(m));
 
