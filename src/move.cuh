@@ -224,7 +224,7 @@ void move_to_str(const Board *board, Move move, int is_white, char *out) {
         u32 mask = 1u << pos;
         u32 pos_m;
         int found = 0;
-        // DL
+
         if (!found && (CAN_DL & mask)) {
             u32 cap = rotr(mask, 1);
             u32 land = rotr(cap, 1);
@@ -234,8 +234,6 @@ void move_to_str(const Board *board, Move move, int is_white, char *out) {
                 found = 1;
             }
         }
-
-        // DR
         if (!found && (CAN_DR & mask)) {
             u32 cap = rotr(mask, 7);
             u32 land = rotr(cap, 7);
@@ -245,8 +243,6 @@ void move_to_str(const Board *board, Move move, int is_white, char *out) {
                 found = 1;
             }
         }
-
-        // UR
         if (!found && (CAN_UR & mask)) {
             u32 cap = rotl(mask, 1);
             u32 land = rotl(cap, 1);
@@ -256,8 +252,6 @@ void move_to_str(const Board *board, Move move, int is_white, char *out) {
                 found = 1;
             }
         }
-
-        // UL
         if (!found && (CAN_UL & mask)) {
             u32 cap = rotl(mask, 7);
             u32 land = rotl(cap, 7);

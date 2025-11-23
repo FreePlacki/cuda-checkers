@@ -86,6 +86,7 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
     }
 
     char input[MOVE_STR_MAX];
+
     static Move m;
     MoveList mlist;
 
@@ -96,12 +97,19 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
     generate_moves(&game->board, is_white, &mlist);
 
     if (is_ai) {
-        if (pause)
-            print_board(&game->board, &mlist, m, is_white);
+        print_board(&game->board, &mlist, m, is_white);
+
+        if (pause) {
+            printf("Press ENTER to continue...\n");
+            fgets(input, sizeof(input), stdin);
+        }
 
         if (mlist.count == 0) {
-            printf("NO VALID MOVES!\n");
-            exit(1);
+            if (is_white)
+                printf("Black won!\n");
+            else
+                printf("White won!\n");
+            return 1;
         }
 
         m = choose_ai_move(game, &mlist, lvl);
@@ -137,10 +145,6 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 
     next_turn(game, is_capture(m));
 
-    if (pause) {
-        printf("Press ENTER to continue...\n");
-        fgets(input, sizeof(input), stdin);
-    }
     return 0;
 }
 
@@ -225,7 +229,8 @@ int main(int argc, char **argv) {
     cudaError_t cudaStatus = cudaSetDevice(0);
     int noCudaDevice = cudaStatus != cudaSuccess;
     if (noCudaDevice) {
-        printf("cudaSetDevice failed: %d (%s)\n", cudaStatus, cudaGetErrorString(cudaStatus));
+        printf("cudaSetDevice failed: %d (%s)\n", cudaStatus,
+               cudaGetErrorString(cudaStatus));
     }
 
     GameState game;
