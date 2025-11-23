@@ -15,49 +15,34 @@ typedef struct MoveList {
     u8 count;
 } MoveList;
 
-void print_board(const Board *board, const MoveList *mlist, Move last_move,
-                 int is_white) {
-    printf("\n  a b c d e f g h\n");
-    for (int y = 0; y < 8; ++y) {
-        printf("%d ", 8 - y);
-        for (int x = 0; x < 8; ++x) {
-            char c = '.';
-            int idx = idx_to_board[y * 4 + x / 2];
-            if ((x + y) % 2 == 0) {
-                printf(FORM_FADE ". " FORM_END);
-                continue;
-            }
-            u32 mask = 1u << idx;
-            if (board->white & mask) {
-                c = board->kings & mask ? 'W' : 'w';
-            } else if (board->black & mask) {
-                c = board->kings & mask ? 'B' : 'b';
-            }
-            int valid = 0;
-            for (int i = 0; i < mlist->count; ++i) {
-                if (move_start(board, mlist->moves[i], is_white) & mask) {
-                    valid = 1;
-                    break;
-                }
-            }
-            if (valid)
-                printf("%c ", c);
-            else if (move_start(board, last_move, is_white) & mask ||
-                     (move_end(board, last_move, is_white) & mask))
-                printf(FORM_FADE FORM_UNDER "%c" FORM_END " ", c);
-            else
-                printf(FORM_FADE "%c " FORM_END, c);
-            mask <<= 1;
-        }
-        printf("%d\n", 8 - y);
-    }
-    printf("  a b c d e f g h\n");
+typedef struct {
+    Move moves[4];
+    u8 count;
+} SmallMoveList;
+
+typedef struct {
+    Move *moves;
+    u8 *count;
+} MoveListView;
+
+__host__ __device__ MoveListView view_from_movelist(MoveList *l) {
+    return (MoveListView){l->moves, &l->count};
+}
+
+__host__ __device__ MoveListView view_from_small(SmallMoveList *s) {
+    return (MoveListView){s->moves, &s->count};
 }
 
 __host__ __device__ void append_move(MoveList *l, Move m) {
     if (l->count == MOVELIST_SIZE)
         return;
     l->moves[l->count++] = m;
+}
+
+__host__ __device__ void view_append_move(MoveListView *l, Move m) {
+    if (*l->count == MOVELIST_SIZE)
+        return;
+    l->moves[(*l->count)++] = m;
 }
 
 // for sorting movelist alphabetically
@@ -121,7 +106,7 @@ __host__ __device__ void force_captures(MoveList *l) {
 }
 
 __host__ __device__ void gen_shift_moves(u32 own, u32 free, int shift,
-                                         MoveList *out) {
+                                         MoveListView *out) {
     u32 shifted = shift > 0 ? rotl(own, shift) : rotr(own, -shift);
 
     u32 moves = shifted & free;
@@ -136,12 +121,12 @@ __host__ __device__ void gen_shift_moves(u32 own, u32 free, int shift,
 
         Move m;
         simple_move(src_idx, dst_idx, &m);
-        append_move(out, m);
+        view_append_move(out, m);
     }
 }
 
 __host__ __device__ int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
-                                          MoveList *out) {
+                                          MoveListView *out) {
     u32 nei = step > 0 ? rotl(ownp, step) : rotr(ownp, -step);
     nei &= ene;
     u32 dst = (step > 0) ? rotl(nei, step) : rotr(nei, -step);
@@ -159,15 +144,15 @@ __host__ __device__ int gen_shift_capture(u32 ownp, u32 ene, u32 free, int step,
         Move m;
         simple_move(src_idx, dst_idx, &m);
         m |= 1u << cap_idx;
-        append_move(out, m);
+        view_append_move(out, m);
     }
 
     return cap_found;
 }
 
 __host__ __device__ int generate_single(const Board *b, int is_white,
-                                        MoveList *out, int mask) {
-    out->count = 0;
+                                        MoveListView *out, int mask) {
+    *out->count = 0;
 
     const u32 own = is_white ? b->white : b->black;
     const u32 ene = is_white ? b->black : b->white;
@@ -217,20 +202,21 @@ typedef struct {
 } StackNode;
 
 #define MOVES_STCK_MAX 32
-
 typedef struct {
     StackNode nodes[MOVES_STCK_MAX];
     int sp;
 } MoveS;
 
-__host__ __device__ int push(StackNode n, MoveS *s) {
+__host__ __device__ __forceinline__ int push(StackNode n, MoveS *s) {
     if (s->sp >= MOVES_STCK_MAX)
         return 0;
     s->nodes[s->sp++] = n;
     return 1;
 }
 
-__host__ __device__ StackNode pop(MoveS *s) { return s->nodes[--s->sp]; }
+__host__ __device__ __forceinline__ StackNode pop(MoveS *s) {
+    return s->nodes[--s->sp];
+}
 
 __host__ __device__ void generate_multi(const Board *b, int is_white,
                                         MoveList *out) {
@@ -250,8 +236,9 @@ __host__ __device__ void generate_multi(const Board *b, int is_white,
     }
 
     out->count = 0;
-    // TODO: we don't need this to have size MOVELIST_SIZE, only 4
-    MoveList next;
+    // we don't need this to have size MOVELIST_SIZE, only 4
+    SmallMoveList next;
+    MoveListView v = view_from_small(&next);
 
     while (st.sp) {
         StackNode cur = pop(&st);
@@ -259,7 +246,7 @@ __host__ __device__ void generate_multi(const Board *b, int is_white,
         next.count = 0;
 
         u32 last = move_end(b, cur.m, is_white);
-        int found_capture = generate_single(&cur.board, is_white, &next, last);
+        int found_capture = generate_single(&cur.board, is_white, &v, last);
         if (!found_capture) {
             append_move(out, cur.m);
             continue;
@@ -286,10 +273,50 @@ __host__ __device__ void generate_moves(const Board *b, int is_white,
                                         MoveList *out) {
     out->count = 0;
 
-    generate_single(b, is_white, out, -1);
+    MoveListView v = view_from_movelist(out);
+    generate_single(b, is_white, &v, -1);
     force_captures(out);
     generate_multi(b, is_white, out);
-    force_captures(out);
+    // force_captures(out);
+}
+
+void print_board(const Board *board, const MoveList *mlist, Move last_move,
+                 int is_white) {
+    printf("\n  a b c d e f g h\n");
+    for (int y = 0; y < 8; ++y) {
+        printf("%d ", 8 - y);
+        for (int x = 0; x < 8; ++x) {
+            char c = '.';
+            int idx = idx_to_board[y * 4 + x / 2];
+            if ((x + y) % 2 == 0) {
+                printf(FORM_FADE ". " FORM_END);
+                continue;
+            }
+            u32 mask = 1u << idx;
+            if (board->white & mask) {
+                c = board->kings & mask ? 'W' : 'w';
+            } else if (board->black & mask) {
+                c = board->kings & mask ? 'B' : 'b';
+            }
+            int valid = 0;
+            for (int i = 0; i < mlist->count; ++i) {
+                if (move_start(board, mlist->moves[i], is_white) & mask) {
+                    valid = 1;
+                    break;
+                }
+            }
+            if (valid)
+                printf("%c ", c);
+            else if (move_start(board, last_move, is_white) & mask ||
+                     (move_end(board, last_move, is_white) & mask))
+                printf(FORM_FADE FORM_UNDER "%c" FORM_END " ", c);
+            else
+                printf(FORM_FADE "%c " FORM_END, c);
+            mask <<= 1;
+        }
+        printf("%d\n", 8 - y);
+    }
+    printf("  a b c d e f g h\n");
 }
 
 #endif /* MOVEGEN_H */
