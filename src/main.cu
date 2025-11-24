@@ -13,6 +13,10 @@
 #include <string.h>
 #include <time.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 void usage(char *pname) {
     fprintf(stderr,
             "Usage\t%s logfile.txt [init.txt]\ninit.txt - moves file to use "
@@ -82,34 +86,42 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
     }
 
     char input[MOVE_STR_MAX];
+
     static Move m;
     MoveList mlist;
 
-    int is_white = (game->current_player == WHITE);
+    int is_white = game->current_player == WHITE;
     int is_ai = is_white ? white_is_ai : black_is_ai;
     AiLevel lvl = is_white ? white_ai_level : black_ai_level;
 
     generate_moves(&game->board, is_white, &mlist);
 
     if (is_ai) {
-        if (pause)
-            print_board(&game->board, &mlist, &m);
+        print_board(&game->board, &mlist, m, is_white);
+
+        if (pause) {
+            printf("Press ENTER to continue...\n");
+            fgets(input, sizeof(input), stdin);
+        }
 
         if (mlist.count == 0) {
-            printf("NO VALID MOVES!\n");
-            exit(1);
+            if (is_white)
+                printf("Black won!\n");
+            else
+                printf("White won!\n");
+            return 1;
         }
 
         m = choose_ai_move(game, &mlist, lvl);
 
-        move_to_str(&m, input);
+        move_to_str(&game->board, m, is_white, input);
         printf("AI (%c) chose %s\n", is_white ? 'w' : 'b', input);
-        assert(is_valid_move(&m, &mlist));
+        assert(is_valid_move(m, &mlist));
 
     } else {
-        print_board(&game->board, &mlist, &m);
+        print_board(&game->board, &mlist, m, is_white);
         printf("\nPossible moves:\n");
-        print_movelist(&mlist);
+        print_movelist(&game->board, &mlist, is_white);
 
         printf("\nPlayer (%c) move: ", is_white ? 'w' : 'b');
         if (!fgets(input, sizeof(input), stdin))
@@ -120,23 +132,21 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
             printf("Incorrect move format.\n");
             return 0;
         }
-        if (!is_valid_move(&m, &mlist)) {
+        if (!is_valid_move(m, &mlist)) {
             printf("Invalid move.\n");
             return 0;
         }
     }
 
-    apply_move(&game->board, &m, 1);
-    move_to_str(&m, input);
-    if (logfile)
+    move_to_str(&game->board, m, is_white, input);
+    apply_move(&game->board, m, is_white, 1);
+    if (logfile) {
         fprintf(logfile, "%s\n", input);
-
-    next_turn(game, is_capture(&m));
-
-    if (pause) {
-        printf("Press ENTER to continue...\n");
-        fgets(input, sizeof(input), stdin);
+        fflush(logfile);
     }
+
+    next_turn(game, is_capture(m));
+
     return 0;
 }
 
@@ -211,11 +221,18 @@ GameMode choose_game_mode() {
 
 int main(int argc, char **argv) {
     srand(time(0));
+#ifdef _WIN32
+    HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    DWORD mode = 0;
+    GetConsoleMode(hConsole, &mode);
+    SetConsoleMode(hConsole, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING);
+#endif
 
     cudaError_t cudaStatus = cudaSetDevice(0);
     int noCudaDevice = cudaStatus != cudaSuccess;
     if (noCudaDevice) {
-        printf("No CUDA device found!\n");
+        printf("cudaSetDevice failed: %d (%s)\n", cudaStatus,
+               cudaGetErrorString(cudaStatus));
     }
 
     GameState game;

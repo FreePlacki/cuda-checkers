@@ -34,14 +34,15 @@ __device__ GameResult playout_device(GameState *gs, u32 rand_seed) {
     memcpy(&state, gs, sizeof(GameState));
 
     for (;;) {
-        generate_moves(&state.board, state.current_player == WHITE, &mlist);
+        int is_white = state.current_player == WHITE;
+        generate_moves(&state.board, is_white, &mlist);
         if (mlist.count == 0)
-            return state.current_player == WHITE ? BLACK_WON : WHITE_WON;
+            return is_white ? BLACK_WON : WHITE_WON;
 
         u32 r = xorshift32(&rand_seed);
         Move m = mlist.moves[r % mlist.count];
-        apply_move(&state.board, &m, 1);
-        next_turn(&state, is_capture(&m));
+        apply_move(&state.board, m, is_white, 1);
+        next_turn(&state, is_capture(m));
         GameResult res = game_result(&state);
         if (res != PENDING)
             return res;
@@ -147,18 +148,19 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *l) {
     if (l->count == 1)
         return l->moves[0];
 
-    const int total_playouts = 10'000'000;
+    // TODO load this dynamically
+    const int total_playouts = 30'000'000;
     const int playouts = total_playouts / l->count;
-    double t0 = now();
 
     int best_score = -playouts;
     int best_idx = 0;
 
+    double t0 = clock();
     for (int i = 0; i < l->count; ++i) {
 
         GameState next = *gs;
-        apply_move(&next.board, &l->moves[i], 1);
-        next_turn(&next, is_capture(&l->moves[i]));
+        apply_move(&next.board, l->moves[i], gs->current_player == WHITE, 1);
+        next_turn(&next, is_capture(l->moves[i]));
 
         int score = playout_gpu(&next, playouts);
 
@@ -169,7 +171,8 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *l) {
     }
 
     printf("valuation: %.4f\nplayouts: %d\ntook: %lf s\n",
-           (double)best_score / playouts, total_playouts, now() - t0);
+           (double)best_score / playouts, total_playouts,
+           (double)(clock() - t0) / CLOCKS_PER_SEC);
 
     return l->moves[best_idx];
 }
