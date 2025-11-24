@@ -117,7 +117,7 @@ $$$
 s_j = cases(
   +1 "jeśli" j"-ta gra zakończyła się wygraną białego",
   -1 "jeśli" j"-ta gra zakończyła się przegraną białego",
-   0 "jeśli" j"-ta gra zakończyła się remisem",
+  " 0  jeśli" j"-ta gra zakończyła się remisem",
 )
 $$$
 
