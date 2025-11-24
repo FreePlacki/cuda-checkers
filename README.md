@@ -8,18 +8,21 @@ Requirements:
 - CUDA-capable GPU
 - [nvcc](https://docs.nvidia.com/cuda/cuda-installation-guide-linux/index.html)
 
+Linux:
 ```bash
-# build
-make
-# run
-./cuda-checkers log_file.txt [game_init_file.txt]
+cmake -S . -B build
+cmake --build build --config Release
 ```
+
+Windows:
+```bash
+cmake -S . -B build -G "Visual Studio 17 2022"
+cmake --build build --config Release
+```
+
 
 See [logs](https://github.com/FreePlacki/cuda-checkers/edit/main/logs) directory for file syntax.
 
-NOTE: on Windows add to nvcc flags: `-ccbin "path\to\cl.exe directory"`,
-ex. "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.44.35207\bin\Hostx64\x64"
-
 ## Performance
 
-Currently achieving about 10 milion playouts (games simulated till the end) per second on a 3060 Ti.
+Currently achieving about 30 milion playouts (games simulated till the end) per second on a 3060 Ti.
