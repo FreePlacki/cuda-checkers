@@ -27,25 +27,23 @@ __device__ inline u32 xorshift32(u32 *s) {
     return *s = x;
 }
 
-__device__ GameResult playout_device(GameState *gs, u32 rand_seed) {
+__device__ GameResult playout_device(GameState gs, u32 rand_seed) {
     MoveList mlist;
-    GameState state;
-
-    memcpy(&state, gs, sizeof(GameState));
 
     for (;;) {
-        int is_white = state.current_player == WHITE;
-        generate_moves(&state.board, is_white, &mlist);
+        GameResult res = game_result(&gs);
+        if (res != PENDING)
+            return res;
+
+        int is_white = gs.current_player == WHITE;
+        generate_moves(&gs.board, is_white, &mlist);
         if (mlist.count == 0)
             return is_white ? BLACK_WON : WHITE_WON;
 
         u32 r = xorshift32(&rand_seed);
         Move m = mlist.moves[r % mlist.count];
-        apply_move(&state.board, m, is_white, 1);
-        next_turn(&state, is_capture(m));
-        GameResult res = game_result(&state);
-        if (res != PENDING)
-            return res;
+        apply_move(&gs.board, m, is_white, 1);
+        next_turn(&gs, is_capture(m));
     }
 }
 
@@ -59,7 +57,7 @@ __global__ void gpu_playout_kernel(GameState *states, GameResult *results,
     // floor(2^32 / phi)
     u32 seed = 0x9E3779B9u ^ id;
 
-    results[id] = playout_device(&s, seed);
+    results[id] = playout_device(s, seed);
 }
 
 int playout_gpu(const GameState *gs, int playouts) {

@@ -2,7 +2,7 @@
 #include "board.cuh"
 #include "gamestate.cuh"
 #include "helpers.h"
-#include "mcts.cuh"
+#include "mcts.h"
 #include "mcts_gpu.cuh"
 #include "move.cuh"
 #include "movegen.cuh"
@@ -29,48 +29,95 @@ typedef enum {
     AI_RANDOM,
     AI_FLAT_MC_CPU,
     AI_FLAT_MC_GPU,
+    AI_MCTS_CPU,
 } AiLevel;
 
-static AiLevel choose_ai_level() {
+typedef struct {
+    AiLevel level;
+    double timeout;
+} AiPlayer;
+
+static double choose_ai_timeout() {
+    char line[64];
+    double timeout = 1.0; // default value
+
+    for (;;) {
+        printf("Choose AI time limit [s] (default %.1lf s): ", timeout);
+        if (!fgets(line, sizeof(line), stdin)) {
+            return timeout;
+        }
+
+        line[strcspn(line, "\n")] = 0;
+
+        if (strlen(line) == 0) {
+            return timeout;
+        }
+
+        char *endptr;
+        double val = strtod(line, &endptr);
+
+        if (endptr == line || *endptr != '\0') {
+            printf("Invalid input, please enter a number.\n");
+            continue;
+        }
+
+        if (val <= 0.0) {
+            printf("Timeout must be positive.\n");
+            continue;
+        }
+
+        return val;
+    }
+}
+
+static AiPlayer choose_ai_level() {
+    double timeout = -1.0;
     for (;;) {
         printf("Choose AI level:\n");
         printf("1.\tRandom\n");
         printf("2.\tFlat Monte-Carlo (CPU)\n");
         printf("3.\tFlat Monte-Carlo (GPU)\n");
+        printf("4.\tMonte-Carlo Tree Search (CPU)\n");
 
         char input[4];
         if (!fgets(input, sizeof(input), stdin))
-            return AI_RANDOM;
+            return (AiPlayer){.level = AI_RANDOM, .timeout = timeout};
 
         switch (input[0]) {
         case '1':
-            return AI_RANDOM;
+            return (AiPlayer){.level = AI_RANDOM, .timeout = timeout};
         case '2':
-            return AI_FLAT_MC_CPU;
+            return (AiPlayer){.level = AI_FLAT_MC_CPU, .timeout = timeout};
         case '3':
-            return AI_FLAT_MC_GPU;
+            return (AiPlayer){.level = AI_FLAT_MC_GPU, .timeout = timeout};
+        case '4':
+            timeout = choose_ai_timeout();
+            return (AiPlayer){.level = AI_MCTS_CPU, .timeout = timeout};
         }
-        printf("Pick a number 1, 2 or 3\n");
+        printf("Pick a number 1, 2, 3 or 4\n");
     }
 }
 
 static Move choose_ai_move(GameState *game, const MoveList *mlist,
-                           AiLevel lvl) {
-    switch (lvl) {
+                           AiPlayer player) {
+    switch (player.level) {
     case AI_RANDOM:
         return choose_move_rand(game, mlist);
     case AI_FLAT_MC_CPU:
         return choose_move_flat_cpu(game, mlist);
     case AI_FLAT_MC_GPU:
         return choose_move_flat_gpu(game, mlist);
+    case AI_MCTS_CPU:
+        return choose_move_cpu(*game, mlist, player.timeout);
     default:
+        assert(0 && "unreachable");
         return choose_move_rand(game, mlist);
     }
 }
 
 static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
-                     int black_is_ai, AiLevel white_ai_level,
-                     AiLevel black_ai_level, int pause) {
+                     int black_is_ai, AiPlayer white_ai, AiPlayer black_ai,
+                     int pause) {
     switch (game_result(game)) {
     case WHITE_WON:
         printf("White won!\n");
@@ -92,7 +139,7 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 
     int is_white = game->current_player == WHITE;
     int is_ai = is_white ? white_is_ai : black_is_ai;
-    AiLevel lvl = is_white ? white_ai_level : black_ai_level;
+    AiPlayer lvl = is_white ? white_ai : black_ai;
 
     generate_moves(&game->board, is_white, &mlist);
 
@@ -151,32 +198,35 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 }
 
 int player_v_player(GameState *g, FILE *log) {
-    return play_turn(g, log, 0, 0, AI_RANDOM, AI_RANDOM, 0);
+    AiPlayer dummy = {.level = AI_RANDOM, .timeout = -1.0};
+    return play_turn(g, log, 0, 0, dummy, dummy, 0);
 }
 
 int player_black_v_ai(GameState *g, FILE *log) {
-    static AiLevel white_ai;
+    static AiPlayer white_ai;
     static int initialized = 0;
     if (!initialized) {
         white_ai = choose_ai_level();
         initialized = 1;
     }
-    return play_turn(g, log, 1, 0, white_ai, AI_RANDOM, 0);
+    AiPlayer dummy = {.level = AI_RANDOM, .timeout = -1.0};
+    return play_turn(g, log, 1, 0, white_ai, dummy, 0);
 }
 
 int player_white_v_ai(GameState *g, FILE *log) {
-    static AiLevel black_ai;
+    static AiPlayer black_ai;
     static int initialized = 0;
     if (!initialized) {
         black_ai = choose_ai_level();
         initialized = 1;
     }
-    return play_turn(g, log, 0, 1, AI_RANDOM, black_ai, 0);
+    AiPlayer dummy = {.level = AI_RANDOM, .timeout = -1.0};
+    return play_turn(g, log, 0, 1, dummy, black_ai, 0);
 }
 
 int ai_v_ai(GameState *g, FILE *log) {
-    static AiLevel white_ai;
-    static AiLevel black_ai;
+    static AiPlayer white_ai;
+    static AiPlayer black_ai;
     static int initialized = 0;
 
     if (!initialized) {

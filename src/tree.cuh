@@ -1,8 +1,10 @@
 #ifndef TREE_H
 #define TREE_H
 
-#include "math.h"
 #include "float.h"
+#include "math.h"
+
+typedef struct Node Node;
 
 typedef struct {
     u32 count;
@@ -11,22 +13,34 @@ typedef struct {
     Node **nodes;
 } Nodes;
 
+typedef struct Node {
+    // # games played * 2
+    u32 games_played;
+    // # games won * 2 + # draws * 1
+    u32 games_won;
+
+    struct Node *parent;
+    Nodes children;
+    GameState gs;
+} Node;
+
+
 #define INITIAL_NODES_SZ 4
-int init_nodes(Nodes *nodes) {
+int nodes_init(Nodes *nodes) {
     nodes->count = 0;
     nodes->size = INITIAL_NODES_SZ;
 
-    nodes->nodes = malloc(INITIAL_NODES_SZ * sizeof(Node *));
+    nodes->nodes = (Node**)malloc(INITIAL_NODES_SZ * sizeof(Node *));
     if (!nodes->nodes)
         return 0;
 
     return 1;
 }
 
-int nodes_add(Nodes *nodes, const Node *node) {
+int nodes_add(Nodes *nodes, Node *node) {
     if (nodes->size == nodes->count) {
         nodes->size <<= 1;
-        nodes->nodes = realloc(nodes->nodes, nodes->size * sizeof(Node *));
+        nodes->nodes = (Node**)realloc(nodes->nodes, nodes->size * sizeof(Node *));
         if (!nodes->nodes)
             return 0;
     }
@@ -40,34 +54,25 @@ void nodes_free(Nodes *nodes) {
     nodes->size = nodes->count = 0;
 }
 
-typedef struct {
-    // # games played * 2
-    u32 games_played;
-    // # games won * 2 + # draws * 1
-    u32 games_won;
-
-    Node *parent;
-    Nodes children;
-    GameState gs;
-} Node;
-
-int node_init(Node *n, const Node *parent, GameState gs) {
-    n = (Node *)malloc(sizeof(Node));
+Node *node_init(Node *parent, GameState gs) {
+    Node *n = (Node *)malloc(sizeof(Node));
 
     n->games_played = n->games_won = 0;
     n->parent = parent;
-    if (!nodes_init(&n->children))
-        return 1;
+    if (!nodes_init(&n->children)) {
+        free(n);
+        return NULL;
+    }
     n->gs = gs;
 
-    return 0;
+    return n;
 }
 
 void node_free(Node *n) {
     if (!n)
         return;
-    for (int i = 0; i < n->children->count)
-        node_free(n->children[i]);
+    for (int i = 0; i < n->children.count; ++i)
+        node_free(n->children.nodes[i]);
     nodes_free(&n->children);
     free(n);
 }
@@ -75,7 +80,10 @@ void node_free(Node *n) {
 int node_is_terminal(const Node *n) { return game_result(&n->gs) != PENDING; }
 
 void node_backprop(Node *n, GameResult result) {
-    int is_white = n->gs.current_player == WHITE;
+    // IMPORTANT: since node stores the GameState *after* the move was made
+    // we have to flip the current_player here to make the node represent the
+    // correct side
+    int is_white = n->gs.current_player != WHITE;
     switch (result) {
     case WHITE_WON:
         if (is_white)
@@ -112,41 +120,52 @@ float node_valuation(const Node *n) {
     return exploitation + exploration;
 }
 
-Node *node_select_child(const Node *root) {
+Node *node_select_child(Node *root) {
     float best_v = 0.0f;
     Node *best_n = NULL;
     for (int i = 0; i < root->children.count; ++i) {
-        float val = node_valuation(root->children->nodes[i]);
-        if (val > best) {
+        Node *ch = root->children.nodes[i];
+        float val = node_valuation(ch);
+        if (val > best_v) {
             best_v = val;
-            best_n = root->children->nodes[i];
+            best_n = ch;
         }
     }
 
     return best_n;
 }
 
-Node *node_select_leaf(const Node *root) {
+Node *node_select_leaf(Node *root) {
     assert(!root->parent);
 
     Node *n = root;
-    // TODO
     for (;;) {
+        if (node_is_terminal(n))
+            return n;
+
+        if (n->children.count == 0)
+            return n;
+
         Node *ch = node_select_child(n);
         if (!ch)
             return n;
+        n = ch;
     }
 }
 
-Node *node_expand(Node *n, Move move) {
-    GameState gs = n->gs;
+Node *node_expand(Node *n, const MoveList *l) {
+    for (int i = 0; i < l->count; ++i) {
+        GameState gs = n->gs;
+        apply_move(&gs.board, l->moves[i], gs.current_player == WHITE, 1);
+        next_turn(&gs, is_capture(l->moves[i]));
 
-    apply_move(&gs->board, move, gs->current_player == WHITE, 1);
-    next_turn(&gs, is_capture(move));
+        Node *child = node_init(n, gs);
+        if (!child)
+            return NULL;
+        nodes_add(&n->children, child);
+    }
 
-    Node *child;
-    node_init(child, n, gs);
-    nodes_add(&n->children, child);
+    return n->children.nodes[0];
 }
 
 #endif /* TREE_H */
