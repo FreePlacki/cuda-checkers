@@ -26,11 +26,17 @@ typedef struct {
 } MoveListView;
 
 __host__ __device__ MoveListView view_from_movelist(MoveList *l) {
-    return (MoveListView){l->moves, &l->count};
+    MoveListView v;
+    v.moves = l->moves;
+    v.count = &l->count;
+    return v;
 }
 
 __host__ __device__ MoveListView view_from_small(SmallMoveList *s) {
-    return (MoveListView){s->moves, &s->count};
+    MoveListView v;
+    v.moves = s->moves;
+    v.count = &s->count;
+    return v;
 }
 
 __host__ __device__ void append_move(MoveList *l, Move m) {

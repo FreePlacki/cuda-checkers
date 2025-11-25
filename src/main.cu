@@ -79,20 +79,27 @@ static AiPlayer choose_ai_level() {
         printf("3.\tFlat Monte-Carlo (GPU)\n");
         printf("4.\tMonte-Carlo Tree Search (CPU)\n");
 
+        AiPlayer pl;
+        pl.level = AI_RANDOM;
+        pl.timeout = timeout;
+
         char input[4];
         if (!fgets(input, sizeof(input), stdin))
-            return (AiPlayer){.level = AI_RANDOM, .timeout = timeout};
+            return pl;
 
         switch (input[0]) {
         case '1':
-            return (AiPlayer){.level = AI_RANDOM, .timeout = timeout};
+            return pl;
         case '2':
-            return (AiPlayer){.level = AI_FLAT_MC_CPU, .timeout = timeout};
+            pl.level = AI_FLAT_MC_CPU;
+            return pl;
         case '3':
-            return (AiPlayer){.level = AI_FLAT_MC_GPU, .timeout = timeout};
+            pl.level = AI_FLAT_MC_GPU;
+            return pl;
         case '4':
-            timeout = choose_ai_timeout();
-            return (AiPlayer){.level = AI_MCTS_CPU, .timeout = timeout};
+            pl.level = AI_MCTS_CPU;
+            pl.timeout = choose_ai_timeout();
+            return pl;
         }
         printf("Pick a number 1, 2, 3 or 4\n");
     }
@@ -198,7 +205,9 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 }
 
 int player_v_player(GameState *g, FILE *log) {
-    AiPlayer dummy = {.level = AI_RANDOM, .timeout = -1.0};
+    AiPlayer dummy;
+    dummy.timeout = -1.0;
+    dummy.level = AI_RANDOM;
     return play_turn(g, log, 0, 0, dummy, dummy, 0);
 }
 
@@ -209,8 +218,7 @@ int player_black_v_ai(GameState *g, FILE *log) {
         white_ai = choose_ai_level();
         initialized = 1;
     }
-    AiPlayer dummy = {.level = AI_RANDOM, .timeout = -1.0};
-    return play_turn(g, log, 1, 0, white_ai, dummy, 0);
+    return play_turn(g, log, 1, 0, white_ai, white_ai, 0);
 }
 
 int player_white_v_ai(GameState *g, FILE *log) {
@@ -220,8 +228,7 @@ int player_white_v_ai(GameState *g, FILE *log) {
         black_ai = choose_ai_level();
         initialized = 1;
     }
-    AiPlayer dummy = {.level = AI_RANDOM, .timeout = -1.0};
-    return play_turn(g, log, 0, 1, dummy, black_ai, 0);
+    return play_turn(g, log, 0, 1, black_ai, black_ai, 0);
 }
 
 int ai_v_ai(GameState *g, FILE *log) {
