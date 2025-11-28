@@ -24,7 +24,6 @@ typedef struct Node {
     GameState gs;
 } Node;
 
-
 #define INITIAL_NODES_SZ 4
 int nodes_init(Nodes *nodes) {
     nodes->count = 0;
@@ -79,6 +78,9 @@ void node_free(Node *n) {
 
 int node_is_terminal(const Node *n) { return game_result(&n->gs) != PENDING; }
 
+// we apply a virtual loss to visited nodes so that they are less likely to be
+// selected during the same batch leaf selection
+#define VIRTUAL_VISITS 1
 void node_backprop(Node *n, GameResult result) {
     // IMPORTANT: since node stores the GameState *after* the move was made
     // we have to flip the current_player here to make the node represent the
@@ -100,6 +102,7 @@ void node_backprop(Node *n, GameResult result) {
         assert(0 && "unreachable");
     }
     n->games_played += 2;
+    n->games_played -= VIRTUAL_VISITS; // remove virtual loss
 
     if (n->parent)
         node_backprop(n->parent, result);
@@ -140,6 +143,8 @@ Node *node_select_leaf(Node *root) {
 
     Node *n = root;
     for (;;) {
+        n->games_played += VIRTUAL_VISITS; // apply virtual loss
+
         if (node_is_terminal(n))
             return n;
 

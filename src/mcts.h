@@ -7,6 +7,7 @@
 #include "move.cuh"
 #include "movegen.cuh"
 #include "tree.cuh"
+#include <cassert>
 #include <ctime>
 
 // plays the game till the end and reports the result
@@ -34,6 +35,7 @@ Move choose_move_rand(const GameState *gs, const MoveList *l) {
 }
 
 Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
+    assert(l->count > 0);
     if (l->count == 1)
         return l->moves[0];
 
@@ -77,6 +79,10 @@ Move choose_move_flat_cpu(const GameState *gs, const MoveList *l) {
 }
 
 Move choose_move_cpu(GameState gs, const MoveList *l, double timeout) {
+    assert(l->count > 0);
+    if (l->count == 1)
+        return l->moves[0];
+
     double t0 = clock();
 
     Node *root = node_init(NULL, gs);

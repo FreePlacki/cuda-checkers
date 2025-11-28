@@ -30,6 +30,7 @@ typedef enum {
     AI_FLAT_MC_CPU,
     AI_FLAT_MC_GPU,
     AI_MCTS_CPU,
+    AI_MCTS_GPU,
 } AiLevel;
 
 typedef struct {
@@ -78,6 +79,7 @@ static AiPlayer choose_ai_level() {
         printf("2.\tFlat Monte-Carlo (CPU)\n");
         printf("3.\tFlat Monte-Carlo (GPU)\n");
         printf("4.\tMonte-Carlo Tree Search (CPU)\n");
+        printf("5.\tMonte-Carlo Tree Search (GPU)\n");
 
         AiPlayer pl;
         pl.level = AI_RANDOM;
@@ -100,8 +102,12 @@ static AiPlayer choose_ai_level() {
             pl.level = AI_MCTS_CPU;
             pl.timeout = choose_ai_timeout();
             return pl;
+        case '5':
+            pl.level = AI_MCTS_GPU;
+            pl.timeout = choose_ai_timeout();
+            return pl;
         }
-        printf("Pick a number 1, 2, 3 or 4\n");
+        printf("Pick a number 1, 2, 3, 4 or 5\n");
     }
 }
 
@@ -116,6 +122,8 @@ static Move choose_ai_move(GameState *game, const MoveList *mlist,
         return choose_move_flat_gpu(game, mlist);
     case AI_MCTS_CPU:
         return choose_move_cpu(*game, mlist, player.timeout);
+    case AI_MCTS_GPU:
+        return choose_move_gpu(*game, mlist, player.timeout);
     default:
         assert(0 && "unreachable");
         return choose_move_rand(game, mlist);
