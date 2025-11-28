@@ -92,14 +92,14 @@ int is_valid_move(Move m, const MoveList *l) {
 }
 
 __host__ __device__ void force_captures(MoveList *l) {
-    int capture_len = 0;
+    int has_capture = 0;
     for (int i = 0; i < l->count; ++i) {
         if (is_capture(l->moves[i])) {
-            int len = popcnt(l->moves[i]);
-            capture_len = len > capture_len ? len : capture_len;
+            has_capture = 1;
+            break;
         }
     }
-    if (capture_len == 0)
+    if (!has_capture)
         return;
 
     int cnt = 0;
@@ -283,7 +283,6 @@ __host__ __device__ void generate_moves(const Board *b, int is_white,
     generate_single(b, is_white, &v, -1);
     force_captures(out);
     generate_multi(b, is_white, out);
-    // force_captures(out);
 }
 
 void print_board(const Board *board, const MoveList *mlist, Move last_move,

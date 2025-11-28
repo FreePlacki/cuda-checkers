@@ -204,7 +204,8 @@ Move choose_move_gpu(GameState gs, const MoveList *root_moves, double timeout) {
     if (!h_states || !h_results)
         exit(1);
 
-    for (int i = 0; i < 1'000; ++i) {
+    // expand the tree initially on the cpu
+    for (int i = 0; i < 10'000; ++i) {
         Node *leaf = node_select_leaf(root);
 
         if (!node_is_terminal(leaf)) {
@@ -270,9 +271,10 @@ Move choose_move_gpu(GameState gs, const MoveList *root_moves, double timeout) {
            total_playouts, (double)(clock() - t0) / CLOCKS_PER_SEC);
 
     best_move = root_moves->moves[best_idx];
-    node_free(root);
 
 cleanup:
+    node_free(root);
+
     if (d_states)
         cudaFree(d_states);
     if (d_results)
