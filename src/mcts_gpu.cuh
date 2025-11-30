@@ -176,7 +176,8 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *root_moves) {
     return root_moves->moves[best_idx];
 }
 
-#define BATCH 10'000 // max number of leaf simulations per GPU round
+#define BATCH 1000 // max number of leaf simulations per GPU round
+#define PLAYOUTS_PER_NODE 32
 Move choose_move_gpu(GameState gs, const MoveList *root_moves, double timeout) {
     assert(root_moves->count > 0);
     if (root_moves->count == 1)
@@ -196,15 +197,19 @@ Move choose_move_gpu(GameState gs, const MoveList *root_moves, double timeout) {
     int total_playouts = 0;
     double valuation;
 
-    CUDA_CHECK(cudaMalloc((void **)&d_states, BATCH * sizeof(GameState)));
-    CUDA_CHECK(cudaMalloc((void **)&d_results, BATCH * sizeof(GameResult)));
+    CUDA_CHECK(cudaMalloc((void **)&d_states,
+                          BATCH * PLAYOUTS_PER_NODE * sizeof(GameState)));
+    CUDA_CHECK(cudaMalloc((void **)&d_results,
+                          BATCH * PLAYOUTS_PER_NODE * sizeof(GameResult)));
 
-    h_states = (GameState *)malloc(BATCH * sizeof(GameState));
-    h_results = (GameResult *)malloc(BATCH * sizeof(GameResult));
+    h_states =
+        (GameState *)malloc(BATCH * PLAYOUTS_PER_NODE * sizeof(GameState));
+    h_results =
+        (GameResult *)malloc(BATCH * PLAYOUTS_PER_NODE * sizeof(GameResult));
     if (!h_states || !h_results)
         exit(1);
 
-    // expand the tree initially on the cpu
+    // expand the tree initially on cpu
     for (int i = 0; i < 10'000; ++i) {
         Node *leaf = node_select_leaf(root);
 
@@ -218,14 +223,14 @@ Move choose_move_gpu(GameState gs, const MoveList *root_moves, double timeout) {
         }
     }
 
+    Node *leaf_batch[BATCH * PLAYOUTS_PER_NODE];
     for (int iter = 0;; ++iter) {
         if ((clock() - t0) / CLOCKS_PER_SEC >= 0.98 * timeout)
             break;
-        Node *leaf_batch[BATCH];
 
         int count = 0;
         for (count = 0; count < BATCH; ++count) {
-            Node *leaf = node_select_leaf(root);
+            Node *leaf = node_select_leaf(root, PLAYOUTS_PER_NODE);
 
             if (!node_is_terminal(leaf)) {
                 MoveList ml;
@@ -235,25 +240,27 @@ Move choose_move_gpu(GameState gs, const MoveList *root_moves, double timeout) {
                 node_expand(leaf, &ml);
             }
 
-            leaf_batch[count] = leaf;
-            h_states[count] = leaf->gs;
+            for (int i = 0; i < PLAYOUTS_PER_NODE; ++i) {
+                leaf_batch[count * PLAYOUTS_PER_NODE + i] = leaf;
+                h_states[count * PLAYOUTS_PER_NODE + i] = leaf->gs;
+            }
         }
 
-        CUDA_CHECK(cudaMemcpy(d_states, h_states, count * sizeof(GameState),
+        CUDA_CHECK(cudaMemcpy(d_states, h_states, count * PLAYOUTS_PER_NODE * sizeof(GameState),
                               cudaMemcpyHostToDevice));
 
         int block = 32;
-        int grid = (count + block - 1) / block;
-        gpu_playout_kernel<<<grid, block>>>(d_states, d_results, count);
+        int grid = (count * PLAYOUTS_PER_NODE + block - 1) / block;
+        gpu_playout_kernel<<<grid, block>>>(d_states, d_results, count * PLAYOUTS_PER_NODE);
         CUDA_CHECK(cudaDeviceSynchronize());
 
-        CUDA_CHECK(cudaMemcpy(h_results, d_results, count * sizeof(GameResult),
+        CUDA_CHECK(cudaMemcpy(h_results, d_results, count * PLAYOUTS_PER_NODE * sizeof(GameResult),
                               cudaMemcpyDeviceToHost));
 
-        for (int i = 0; i < count; i++)
+        for (int i = 0; i < count * PLAYOUTS_PER_NODE; i++)
             node_backprop(leaf_batch[i], h_results[i]);
 
-        total_playouts += count;
+        total_playouts += count * PLAYOUTS_PER_NODE;
     }
 
     // choose child with most visits

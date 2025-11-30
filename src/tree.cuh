@@ -138,12 +138,12 @@ Node *node_select_child(Node *root) {
     return best_n;
 }
 
-Node *node_select_leaf(Node *root) {
+Node *node_select_leaf(Node *root, int visits = VIRTUAL_VISITS) {
     assert(!root->parent);
 
     Node *n = root;
     for (;;) {
-        n->games_played += VIRTUAL_VISITS; // apply virtual loss
+        n->games_played += visits; // apply virtual loss
 
         if (node_is_terminal(n))
             return n;
