@@ -58,7 +58,7 @@ int seed_game(GameState *gs, FILE *f, FILE *logfile) {
     return 1;
 }
 
-#define MAX_NOCAPTURE 50
+#define MAX_NOCAPTURE 80
 __host__ __device__
 GameResult game_result(const GameState *gs) {
     if (gs->no_capture >= MAX_NOCAPTURE)

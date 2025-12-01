@@ -74,7 +74,6 @@ int playout_gpu(const GameState *gs, int playouts) {
     CUDA_CHECK(cudaEventCreate(&start_evt));
     CUDA_CHECK(cudaEventCreate(&stop_evt));
 
-    // host allocations
     h_states = (GameState *)malloc(playouts * sizeof(GameState));
     h_results = (GameResult *)malloc(playouts * sizeof(GameResult));
     if (!h_states || !h_results) {
@@ -82,19 +81,15 @@ int playout_gpu(const GameState *gs, int playouts) {
         goto cleanup;
     }
 
-    // fill host states
     for (int i = 0; i < playouts; i++)
         h_states[i] = *gs;
 
-    // device allocations
     CUDA_CHECK(cudaMalloc((void **)&d_states, playouts * sizeof(GameState)));
     CUDA_CHECK(cudaMalloc((void **)&d_results, playouts * sizeof(GameResult)));
 
-    // copy states to device
     CUDA_CHECK(cudaMemcpy(d_states, h_states, playouts * sizeof(GameState),
                           cudaMemcpyHostToDevice));
 
-    // kernel launch
     {
         int block = 32;
         int grid = (playouts + block - 1) / block;
@@ -110,11 +105,9 @@ int playout_gpu(const GameState *gs, int playouts) {
         // printf("Kernel time: %.3f ms\n", ms);
     }
 
-    // read results back
     CUDA_CHECK(cudaMemcpy(h_results, d_results, playouts * sizeof(GameResult),
                           cudaMemcpyDeviceToHost));
 
-    // results aggregation
     {
         int is_white = (gs->current_player != WHITE);
         for (int i = 0; i < playouts; i++) {
@@ -179,92 +172,151 @@ Move choose_move_flat_gpu(const GameState *gs, const MoveList *root_moves) {
 #define BATCH 1000 // max number of leaf simulations per GPU round
 #define PLAYOUTS_PER_NODE 32
 Move choose_move_gpu(GameState gs, const MoveList *root_moves, double timeout) {
-    assert(root_moves->count > 0);
+    assert(root_moves && root_moves->count > 0);
     if (root_moves->count == 1)
         return root_moves->moves[0];
 
     double t0 = clock();
 
+    const size_t max_total = BATCH * PLAYOUTS_PER_NODE;
+
     Node *root = node_init(NULL, gs);
     node_expand(root, root_moves);
 
-    GameState *d_states, *h_states;
-    GameResult *d_results, *h_results;
+    // Device buffers (2 buffers for double buffering)
+    GameState *d_states[2];
+    GameResult *d_results[2];
+    // Host pinned buffers
+    GameState *h_states[2];
+    GameResult *h_results[2];
 
-    Node *best = NULL;
-    Move best_move;
-    int best_idx = 0;
+    // Host-side arrays of leaf pointers per buffer
+    Node **leaf_batch_host[2];
+
+    cudaStream_t streams[2];
+
+    int cur = 0;            // index of buffer we are filling now (0 or 1)
+    int prev = -1;          // index of buffer currently executing on GPU (or -1 none)
+    size_t prev_total = 0;  // number of playouts in prev buffer (for copying back/backprop)
+
     int total_playouts = 0;
+    int iterations = 0;
+
+    // choose best child (most visits)
+    Node *best = NULL;
+    int best_idx = 0;
+    Move best_move;
+
     double valuation;
 
-    CUDA_CHECK(cudaMalloc((void **)&d_states,
-                          BATCH * PLAYOUTS_PER_NODE * sizeof(GameState)));
-    CUDA_CHECK(cudaMalloc((void **)&d_results,
-                          BATCH * PLAYOUTS_PER_NODE * sizeof(GameResult)));
+    CUDA_CHECK(cudaMalloc((void **)&d_states[0], max_total * sizeof(GameState)));
+    CUDA_CHECK(cudaMalloc((void **)&d_states[1], max_total * sizeof(GameState)));
+    CUDA_CHECK(cudaMalloc((void **)&d_results[0], max_total * sizeof(GameResult)));
+    CUDA_CHECK(cudaMalloc((void **)&d_results[1], max_total * sizeof(GameResult)));
 
-    h_states =
-        (GameState *)malloc(BATCH * PLAYOUTS_PER_NODE * sizeof(GameState));
-    h_results =
-        (GameResult *)malloc(BATCH * PLAYOUTS_PER_NODE * sizeof(GameResult));
-    if (!h_states || !h_results)
-        exit(1);
+    CUDA_CHECK(cudaHostAlloc((void **)&h_states[0], max_total * sizeof(GameState), cudaHostAllocDefault));
+    CUDA_CHECK(cudaHostAlloc((void **)&h_states[1], max_total * sizeof(GameState), cudaHostAllocDefault));
+    CUDA_CHECK(cudaHostAlloc((void **)&h_results[0], max_total * sizeof(GameResult), cudaHostAllocDefault));
+    CUDA_CHECK(cudaHostAlloc((void **)&h_results[1], max_total * sizeof(GameResult), cudaHostAllocDefault));
 
-    // expand the tree initially on cpu
-    for (int i = 0; i < 10'000; ++i) {
+    leaf_batch_host[0] = (Node **)malloc(max_total * sizeof(Node *));
+    leaf_batch_host[1] = (Node **)malloc(max_total * sizeof(Node *));
+    if (!leaf_batch_host[0] || !leaf_batch_host[1]) {
+        fprintf(stderr, "Host allocation failure for leaf_batch_host\n");
+        goto cleanup;
+    }
+
+    CUDA_CHECK(cudaStreamCreate(&streams[0]));
+    CUDA_CHECK(cudaStreamCreate(&streams[1]));
+
+    for (int i = 0; i < 300; ++i) {
         Node *leaf = node_select_leaf(root);
-
         if (!node_is_terminal(leaf)) {
             MoveList ml;
-            generate_moves(&leaf->gs.board, leaf->gs.current_player == WHITE,
-                           &ml);
+            generate_moves(&leaf->gs.board, leaf->gs.current_player == WHITE, &ml);
             node_expand(leaf, &ml);
             GameResult r = playout(leaf->gs);
             node_backprop(leaf, r);
         }
     }
 
-    Node *leaf_batch[BATCH * PLAYOUTS_PER_NODE];
-    for (int iter = 0;; ++iter) {
-        if ((clock() - t0) / CLOCKS_PER_SEC >= 0.98 * timeout)
+    // Each iteration: fill cur buffer with leaf_count leaves * PLAYOUTS_PER_NODE copies,
+    // launch async H2D memcpy + kernel on stream[cur], while simultaneously
+    // retrieving results (async D2H) and backprop for prev buffer.
+    for (;;) {
+        double elapsed = ((double)clock() - t0) / CLOCKS_PER_SEC;
+        if (elapsed >= 0.98 * timeout)
             break;
 
-        int count = 0;
-        for (count = 0; count < BATCH; ++count) {
+        size_t leaf_count = 0;
+        for (; leaf_count < BATCH; ++leaf_count) {
+            elapsed = ((double)clock() - t0) / CLOCKS_PER_SEC;
+            if (elapsed >= 0.98 * timeout)
+                break;
+
             Node *leaf = node_select_leaf(root, PLAYOUTS_PER_NODE);
 
             if (!node_is_terminal(leaf)) {
                 MoveList ml;
-                generate_moves(&leaf->gs.board,
-                               leaf->gs.current_player == WHITE, &ml);
-
+                generate_moves(&leaf->gs.board, leaf->gs.current_player == WHITE, &ml);
                 node_expand(leaf, &ml);
             }
 
-            for (int i = 0; i < PLAYOUTS_PER_NODE; ++i) {
-                leaf_batch[count * PLAYOUTS_PER_NODE + i] = leaf;
-                h_states[count * PLAYOUTS_PER_NODE + i] = leaf->gs;
+            // schedule PLAYOUTS_PER_NODE playouts for this leaf
+            for (size_t p = 0; p < PLAYOUTS_PER_NODE; ++p) {
+                size_t idx = leaf_count * PLAYOUTS_PER_NODE + p;
+                leaf_batch_host[cur][idx] = leaf;
+                h_states[cur][idx] = leaf->gs;
             }
         }
 
-        CUDA_CHECK(cudaMemcpy(d_states, h_states, count * PLAYOUTS_PER_NODE * sizeof(GameState),
-                              cudaMemcpyHostToDevice));
+        size_t cur_total = leaf_count * PLAYOUTS_PER_NODE;
+
+        // Async copy H->D for cur buffer and launch kernel on stream[cur]
+        CUDA_CHECK(cudaMemcpyAsync(d_states[cur], h_states[cur],
+                                   cur_total * sizeof(GameState),
+                                   cudaMemcpyHostToDevice, streams[cur]));
 
         int block = 32;
-        int grid = (count * PLAYOUTS_PER_NODE + block - 1) / block;
-        gpu_playout_kernel<<<grid, block>>>(d_states, d_results, count * PLAYOUTS_PER_NODE);
-        CUDA_CHECK(cudaDeviceSynchronize());
+        int grid = (cur_total + block - 1) / block;
+        gpu_playout_kernel<<<grid, block, 0, streams[cur]>>>(d_states[cur], d_results[cur], (int)cur_total);
+        CUDA_CHECK(cudaGetLastError());
 
-        CUDA_CHECK(cudaMemcpy(h_results, d_results, count * PLAYOUTS_PER_NODE * sizeof(GameResult),
-                              cudaMemcpyDeviceToHost));
+        // Issue D2H async copy for previous buffer (if any) and then synchronize that stream and backprop
+        if (prev != -1) {
+            CUDA_CHECK(cudaMemcpyAsync(h_results[prev], d_results[prev],
+                                       prev_total * sizeof(GameResult),
+                                       cudaMemcpyDeviceToHost, streams[prev]));
 
-        for (int i = 0; i < count * PLAYOUTS_PER_NODE; i++)
-            node_backprop(leaf_batch[i], h_results[i]);
+            CUDA_CHECK(cudaStreamSynchronize(streams[prev]));
 
-        total_playouts += count * PLAYOUTS_PER_NODE;
+            for (size_t i = 0; i < prev_total; ++i) {
+                node_backprop(leaf_batch_host[prev][i], h_results[prev][i]);
+            }
+            total_playouts += prev_total;
+        }
+
+        // swap buffers
+        prev = cur;
+        prev_total = cur_total;
+        cur ^= 1;
+
+        iterations++;
     }
 
-    // choose child with most visits
-    for (int i = 0; i < root->children.count; i++) {
+    // After main loop, we may have one in-flight buffer (prev). Wait and process it.
+    if (prev != -1 && prev_total > 0) {
+        CUDA_CHECK(cudaMemcpyAsync(h_results[prev], d_results[prev],
+                                   prev_total * sizeof(GameResult),
+                                   cudaMemcpyDeviceToHost, streams[prev]));
+        CUDA_CHECK(cudaStreamSynchronize(streams[prev]));
+        for (size_t i = 0; i < prev_total; ++i) {
+            node_backprop(leaf_batch_host[prev][i], h_results[prev][i]);
+        }
+        total_playouts += prev_total;
+    }
+
+    for (int i = 0; i < root->children.count; ++i) {
         Node *ch = root->children.nodes[i];
         if (!best || ch->games_played > best->games_played) {
             best = ch;
@@ -280,17 +332,26 @@ Move choose_move_gpu(GameState gs, const MoveList *root_moves, double timeout) {
     best_move = root_moves->moves[best_idx];
 
 cleanup:
-    node_free(root);
+    if (streams[0]) cudaStreamDestroy(streams[0]);
+    if (streams[1]) cudaStreamDestroy(streams[1]);
 
-    if (d_states)
-        cudaFree(d_states);
-    if (d_results)
-        cudaFree(d_results);
-    if (h_states)
-        free(h_states);
-    if (h_results)
-        free(h_results);
+    if (d_states[0]) cudaFree(d_states[0]);
+    if (d_states[1]) cudaFree(d_states[1]);
+    if (d_results[0]) cudaFree(d_results[0]);
+    if (d_results[1]) cudaFree(d_results[1]);
+
+    if (h_states[0]) cudaFreeHost(h_states[0]);
+    if (h_states[1]) cudaFreeHost(h_states[1]);
+    if (h_results[0]) cudaFreeHost(h_results[0]);
+    if (h_results[1]) cudaFreeHost(h_results[1]);
+
+    if (leaf_batch_host[0]) free(leaf_batch_host[0]);
+    if (leaf_batch_host[1]) free(leaf_batch_host[1]);
+
+    if (root) node_free(root);
+
     return best_move;
 }
+
 
 #endif /* MCTS_GPU_H */

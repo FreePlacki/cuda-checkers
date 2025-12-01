@@ -20,8 +20,23 @@ cmake -S . -B build -G "Visual Studio 17 2022"
 cmake --build build --config Release
 ```
 
+Remove `-DFORMATTING` to compile without custom console formatting.
+
+Run:
+```bash
+./build/cuda-checkers logs/log.txt [init.txt]
+```
 
 See [logs](https://github.com/FreePlacki/cuda-checkers/edit/main/logs) directory for file syntax.
+
+Tip: pressing Ctrl+D (Ctrl+Z on Windows) when running AI vs AI will make the game play automatically ;)
+
+## Detailed rules
+
+- draw after 80 non-capture moves
+- pieces move only forward
+- kings move forward and backward one square
+- captures are forced (can choose any)
 
 ## Performance
 
