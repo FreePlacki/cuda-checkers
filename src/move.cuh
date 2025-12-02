@@ -3,12 +3,8 @@
 
 #include "board.cuh"
 #include "helpers.h"
+#include "ctype.h"
 #include <stdint.h>
-#ifdef _WIN32
-#include <intrin.h>
-#else
-#include <x86intrin.h>
-#endif
 
 #define MOVE_STR_MAX 36
 
@@ -22,26 +18,38 @@
 // when applying the move.
 typedef u32 Move;
 
-__host__ __device__ __forceinline__ int popcnt(u32 x) {
+__host__ __device__ __forceinline__ int popcnt(uint32_t x) {
 #if defined(__CUDA_ARCH__)
     return __popc(x);
-#elif defined(_MSC_VER)
+#elif defined(INTRIN) && defined(_MSC_VER)
     return __popcnt(x);
-#else
+#elif defined(INTRIN)
     return __builtin_popcount(x);
+#else
+    x = x - ((x >> 1) & 0x55555555);
+    x = (x & 0x33333333) + ((x >> 2) & 0x33333333);
+    return (((x + (x >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
 #endif
 }
 
 // counts the number of consecutive 0s (from least significant)
-__host__ __device__ __forceinline__ int ctz32(u32 x) {
+__host__ __device__ __forceinline__ int ctz32(uint32_t x) {
 #if defined(__CUDA_ARCH__)
     return __ffs(x) - 1;
-#elif defined(_MSC_VER)
+#elif defined(INTRIN) && defined(_MSC_VER)
     unsigned long idx;
     _BitScanForward(&idx, x);
-    return idx;
-#else
+    return (int)idx;
+#elif defined(INTRIN)
     return __builtin_ctz(x);
+#else
+    if (x == 0) return 32;
+    int n = 0;
+    while ((x & 1) == 0) {
+        x >>= 1;
+        n++;
+    }
+    return n;
 #endif
 }
 

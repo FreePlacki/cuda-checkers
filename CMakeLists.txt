@@ -13,6 +13,7 @@ target_compile_options(cuda-checkers PRIVATE
     $<$<COMPILE_LANGUAGE:CUDA>:-lineinfo>
     $<$<COMPILE_LANGUAGE:CUDA>:-O3>
     $<$<COMPILE_LANGUAGE:CUDA>:-DFORMATTING> # remove to disable console formatting
+    $<$<COMPILE_LANGUAGE:CUDA>:-DINTRIN> # remove to disable intrinsics usage (if it doesn't compile on old machines)
 )
 
 set_target_properties(cuda-checkers PROPERTIES

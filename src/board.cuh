@@ -3,10 +3,12 @@
 
 #include "stdint.h"
 #include <stdio.h>
+#ifdef INTRIN
 #ifdef _WIN32
 #include <intrin.h>
 #else
 #include <x86intrin.h>
+#endif
 #endif
 
 #ifdef FORMATTING
@@ -69,15 +71,19 @@ void init_board(Board *board) {
 __host__ __device__ __forceinline__ u32 rotl(u32 x, u8 n) {
 #if defined(__CUDA_ARCH__)
     return __funnelshift_l(x, x, n);
-#else
+#elif defined(INTRIN)
     return _rotl(x, n);
+#else
+    return (x << n) | (x >> ((32 - n) & 31));
 #endif
 }
 __host__ __device__ __forceinline__ u32 rotr(u32 x, u8 n) {
 #if defined(__CUDA_ARCH__)
     return __funnelshift_r(x, x, n);
-#else
+#elif defined(INTRIN)
     return _rotr(x, n);
+#else
+    return (x >> n) | (x << ((32 - n) & 31));
 #endif
 }
 
