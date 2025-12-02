@@ -20,3 +20,34 @@ set_target_properties(cuda-checkers PROPERTIES
     CUDA_SEPARABLE_COMPILATION ON
 )
 
+
+
+# Makefile for cuda-checkers
+
+CXX := nvcc
+TARGET := cuda-checkers
+SRCS := src/main.cu
+OBJS := $(SRCS:.cu=.o)
+
+# Compiler flags
+# -std=c++17 for host, -arch and -rdc=true for separable compilation
+NVCCFLAGS := -ccbin /usr/bin/g++ -arch=sm_35
+CUDA_ONLY_FLAGS := -Xptxas=-v -lineinfo -O3 -DFORMATTING
+
+# Combine
+CFLAGS := $(NVCCFLAGS) $(CUDA_ONLY_FLAGS)
+
+.PHONY: all clean
+
+all: $(TARGET)
+
+# Build target from object(s)
+$(TARGET): $(OBJS)
+        $(CXX) $(CFLAGS) -o $@ $^
+
+# Compile .cu -> .o
+%.o: %.cu
+        $(CXX) $(CFLAGS) -c $< -o $@
+
+clean:
+        rm -f $(OBJS) $(TARGET)

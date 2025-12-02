@@ -163,7 +163,7 @@ static int play_turn(GameState *game, FILE *logfile, int white_is_ai,
 
         if (pause) {
             printf("Press ENTER to continue...\n");
-            fgets(input, sizeof(input), stdin);
+            char *_a = fgets(input, sizeof(input), stdin);
         }
 
         if (mlist.count == 0) {
