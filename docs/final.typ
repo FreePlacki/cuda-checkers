@@ -67,7 +67,7 @@ $plus.minus 1$, $plus.minus 7$
 
 === Ruch
 
-Okazuje się, że ruch możemy reprezentować na 1 bajcie
+Okazuje się, że ruch możemy reprezentować na 4 bajtach:
 
 ```c
 typedef uint32_t Move;

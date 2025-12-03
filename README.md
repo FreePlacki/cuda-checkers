@@ -20,6 +20,7 @@ cmake -S . -B build -G "Visual Studio 17 2022"
 cmake --build build --config Release
 ```
 
+Remove `-DINTRIN` to compile without intrinsics (if it doesn't compile on older cpus)
 Remove `-DFORMATTING` to compile without custom console formatting.
 
 Run:
@@ -29,7 +30,8 @@ Run:
 
 See [logs](https://github.com/FreePlacki/cuda-checkers/edit/main/logs) directory for file syntax.
 
-Tip: pressing Ctrl+D (Ctrl+Z on Windows, but probably won't work) when running AI vs AI will make the game play automatically ;)
+Tip: pressing Ctrl+D (Ctrl+Z on Windows, but probably won't work) when running AI vs AI will make the
+game play out automatically ;)
 
 ## Detailed rules
 
