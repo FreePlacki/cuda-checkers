@@ -1,3 +1,5 @@
+![](https://github.com/FreePlacki/cuda-checkers/blob/main/checkers.gif)
+
 # CUDA checkers
 
 Extremely fast checkers solver using [Monte Carlo Tree Search](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search)
